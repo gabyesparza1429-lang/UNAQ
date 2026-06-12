@@ -10,7 +10,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
 # Configuración inicial de la página web
-st.set_page_config(page_title="GEM UNAQ - Control de Notas", layout="wide")
+st.set_page_config(page_title="UNAQ - Control de Notas", layout="wide")
 
 # Nombre del archivo persistente en disco para la memoria permanente
 ARCHIVO_BD = "base_datos_alumnos.json"
