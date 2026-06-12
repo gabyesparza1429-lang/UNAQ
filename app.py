@@ -12,7 +12,7 @@ st.set_page_config(page_title="GEM UNAQ - Control de Notas", layout="wide")
 
 # Inicialización de la base de datos de grupos y alumnos en la sesión de la app
 if 'base_datos_grupos' not in st.session_state:
-    st.session_state.base_datos_grupos = {} # Estructura: {'GRUPO_1': DataFrame, 'GRUPO_2': DataFrame}
+    st.session_state.base_datos_grupos = {} # Estructura: {'GRUPO': DataFrame}
 if 'config_evaluacion' not in st.session_state:
     st.session_state.config_evaluacion = {}
 
@@ -57,20 +57,19 @@ with st.sidebar:
             'asistencia': w_asistencia / 100, 'firmas': w_firmas / 100, 'ser': w_ser / 100
         }
 
-# CUERPO PRINCIPAL: Extracción y separación por grupos
+# CUERPO PRINCIPAL: Extracción y separación por grupos con nueva regla Regex
 if not st.session_state.base_datos_grupos:
     st.header("📂 Carga Masiva de PDFs (Detección de Múltiples Grupos)")
-    st.info("💡 **Instrucciones:** Abre tu PDF completo de la UNAQ (el que tiene todas las materias y grupos juntos), presiona **Ctrl + A** para seleccionar todo, luego **Ctrl + C** para copiar, y pégalo aquí abajo. El sistema detectará los diferentes grupos y acomodará a cada alumno automáticamente.")
+    st.info("💡 **Instrucciones:** Copia el texto completo del PDF de la UNAQ y pégalo abajo. El sistema renombrará los grupos al formato limpio (Ej: IDMA A1.4).")
     
     texto_pegado = st.text_area("📋 Pega aquí todo el contenido de tus listas de la UNAQ:", height=400, placeholder="Pega el texto aquí...")
     
-    if st.button("✨ Procesar, Separar y Crear Grupos", type="primary", use_container_width=True):
+    if st.button("✨ Procesar, Separar y Create Grupos", type="primary", use_container_width=True):
         if texto_pegado.strip() == "":
             st.warning("El cuadro de texto está vacío.")
         else:
             lineas = texto_pegado.split("\n")
             
-            # Palabras institucionales que no son nombres de alumnos
             palabras_bloqueadas = [
                 "universidad", "aeronáutica", "querétaro", "departamento", "servicios", "escolares",
                 "lista", "asistencia", "clave", "materia", "cuatrimestre", "docente",
@@ -79,6 +78,8 @@ if not st.session_state.base_datos_grupos:
             ]
             
             diccionario_grupos = {}
+            carrera_detectada = ""
+            nivel_detectado = ""
             grupo_actual = "GRUPO NO ESPECIFICADO"
             
             for linea in lineas:
@@ -87,33 +88,32 @@ if not st.session_state.base_datos_grupos:
                 if not linea_limpia or len(linea_limpia) < 3:
                     continue
                 
-                # DETECCIÓN DE NUEVO GRUPO (Busca patrones como 26MA-6IDMA, 26MA-3IECSA, etc.)
-                match_grupo = re.search(r'\b\d{2}MA-\d[A-Z]+\b', linea_limpia)
-                if match_grupo:
-                    grupo_actual = match_grupo.group(0)
-                    if grupo_actual not in diccionario_grupos:
-                        diccionario_grupos[grupo_actual] = []
-                    continue
+                match_frn = re.search(r'FRN-A(\d\.\d)', linea_limpia, re.IGNORECASE)
+                if match_frn:
+                    nivel_detectado = f"A{match_frn.group(1)}"
                 
-                # Saltar líneas informativas o basura de formato
+                match_plan = re.search(r'\b([A-Z]+)\d{4}\b', linea_limpia, re.IGNORECASE)
+                if match_plan:
+                    carrera_detectada = match_plan.group(1).upper()
+                    if carrera_detectada and nivel_detectado:
+                        grupo_actual = f"{carrera_detectada} {nivel_detectado}"
+                        if grupo_actual not in diccionario_grupos:
+                            diccionario_grupos[grupo_actual] = []
+                
                 if any(bloqueo in linea_limpia.lower() for bloqueo in palabras_bloqueadas):
                     continue
                 
-                # Quitar números sueltos (matrículas o número de lista)
                 linea_limpia = re.sub(r'\b\d+\b', '', linea_limpia).strip()
                 
-                # Verificar que cumpla características de un nombre real de alumno
                 if len(linea_limpia.split()) >= 2 and not linea_limpia.startswith("A-FR-") and not "INGLES" in linea_limpia.upper():
                     if grupo_actual not in diccionario_grupos:
                         diccionario_grupos[grupo_actual] = []
                     diccionario_grupos[grupo_actual].append(linea_limpia.upper())
             
-            # Limpiar listas, remover duplicados por grupo y guardarlo en la sesión
             grupos_creados = 0
             for grupo, lista_alumnos in diccionario_grupos.items():
                 lista_final_alumnos = sorted(list(set(lista_alumnos)))
-                if lista_final_alumnos:
-                    # Crear el DataFrame estructurado de notas para cada grupo detectado
+                if lista_final_alumnos and grupo != "GRUPO NO ESPECIFICADO":
                     st.session_state.base_datos_grupos[grupo] = pd.DataFrame({
                         'Alumno': lista_final_alumnos,
                         '1er Quiz': [0.0]*len(lista_final_alumnos), '2do Quiz': [0.0]*len(lista_final_alumnos),
@@ -121,23 +121,22 @@ if not st.session_state.base_datos_grupos:
                         'TOTAL QUIZ': [0.0]*len(lista_final_alumnos),
                         '1er Proyecto': [0.0]*len(lista_final_alumnos), 'TOTAL PROYECTO': [0.0]*len(lista_final_alumnos),
                         'Comprensión Oral': [0.0]*len(lista_final_alumnos), 'Comprensión Escrita': [0.0]*len(lista_final_alumnos),
-                        'Producción Oral': [0.0]*len(lista_alumnos_filt := lista_final_alumnos), 'Producción Escrita': [0.0]*len(lista_final_alumnos),
+                        'Producción Oral': [0.0]*len(lista_final_alumnos), 'Producción Escrita': [0.0]*len(lista_final_alumnos),
                         'Asistencia': [0.0]*len(lista_final_alumnos), 'Firmas': [0.0]*len(lista_final_alumnos),
                         'Ser': [0.0]*len(lista_final_alumnos), 'TOTAL FINAL': [0.0]*len(lista_final_alumnos)
                     })
                     grupos_creados += 1
             
             if grupos_creados > 0:
-                st.success(f"🎉 ¡Éxito! El sistema detectó y configuró automáticamente {grupos_creados} grupos separados con sus respectivos alumnos.")
+                st.success(f"🎉 ¡Éxito! Se generaron {grupos_creados} grupos con formato limpio (Ej: IDMA A1.4).")
                 st.rerun()
             else:
-                st.error("No se detectaron grupos válidos en el texto pegado. Asegúrate de copiar el PDF completo.")
+                st.error("No se pudieron estructurar los grupos. Revisa el formato del texto pegado.")
 
-# INTERFAZ DE CAPTURA Y REPORTES CUANDO YA HAY GRUPOS ACTIVOS
+# INTERFAZ DE CAPTURA, REPORTES Y ADMINISTRACIÓN
 else:
     col_g1, col_g2 = st.columns([3, 1])
     with col_g1:
-        # Selector de grupos detectados en el PDF
         lista_de_grupos = list(st.session_state.base_datos_grupos.keys())
         grupo_seleccionado = st.selectbox("📂 Seleccione el Grupo que desea calificar actualmente:", lista_de_grupos)
     with col_g2:
@@ -147,77 +146,78 @@ else:
             st.session_state.base_datos_grupos = {}
             st.rerun()
             
-    # Trabajar con el dataframe del grupo elegido
     df_grupo = st.session_state.base_datos_grupos[grupo_seleccionado]
     
-    tab_captura, tab_tabla, tab_reportes = st.tabs(["📝 Captura Paso a Paso", "📊 Cuadrícula del Grupo", "🖨️ Reportes PDF"])
+    # Añadida la pestaña de Administración solicitada
+    tab_captura, tab_tabla, tab_reportes, tab_admin = st.tabs([
+        "📝 Captura Paso a Paso", "📊 Cuadrícula del Grupo", "🖨️ Reportes PDF", "🛠️ Administrar Grupos y Alumnos"
+    ])
     
     with tab_captura:
         st.subheader(f"✍️ Evaluando Grupo: {grupo_seleccionado}")
-        
-        alumno_seleccionado = st.selectbox("👤 Selecciona al alumno a evaluar:", df_grupo['Alumno'].tolist())
-        idx = df_grupo[df_grupo['Alumno'] == alumno_seleccionado].index[0]
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.markdown("### 📝 Quizes y Proyectos (0-10)")
-            q1 = st.number_input("1er Quiz", 0.0, 10.0, float(df_grupo.at[idx, '1er Quiz']), 0.1, key=f"q1_{idx}")
-            q2 = st.number_input("2do Quiz", 0.0, 10.0, float(df_grupo.at[idx, '2do Quiz']), 0.1, key=f"q2_{idx}")
-            q3 = st.number_input("3er Quiz", 0.0, 10.0, float(df_grupo.at[idx, '3er Quiz']), 0.1, key=f"q3_{idx}")
-            q4 = st.number_input("4to Quiz", 0.0, 10.0, float(df_grupo.at[idx, '4to Quiz']), 0.1, key=f"q4_{idx}")
-            p1 = st.number_input("Nota del Proyecto", 0.0, 10.0, float(df_grupo.at[idx, '1er Proyecto']), 0.1, key=f"p1_{idx}")
+        if not df_grupo.empty:
+            alumno_seleccionado = st.selectbox("👤 Selecciona al alumno a evaluar:", df_grupo['Alumno'].tolist())
+            idx = df_grupo[df_grupo['Alumno'] == alumno_seleccionado].index[0]
             
-        with col2:
-            st.markdown("### 🗣️ Competencias (0-10)")
-            c_oral = st.number_input("Comprensión Oral", 0.0, 10.0, float(df_grupo.at[idx, 'Comprensión Oral']), 0.1, key=f"co_{idx}")
-            c_esc = st.number_input("Comprensión Escrita", 0.0, 10.0, float(df_grupo.at[idx, 'Comprensión Escrita']), 0.1, key=f"ce_{idx}")
-            p_oral = st.number_input("Producción Oral", 0.0, 10.0, float(df_grupo.at[idx, 'Producción Oral']), 0.1, key=f"po_{idx}")
-            p_esc = st.number_input("Producción Escrita", 0.0, 10.0, float(df_grupo.at[idx, 'Producción Escrita']), 0.1, key=f"pe_{idx}")
-            
-        with col3:
-            st.markdown("### 📋 Formación Integral (0-10)")
-            asist = st.number_input("Asistencia", 0.0, 10.0, float(df_grupo.at[idx, 'Asistencia']), 0.1, key=f"as_{idx}")
-            firmas = st.number_input("Firmas / Tareas", 0.0, 10.0, float(df_grupo.at[idx, 'Firmas']), 0.1, key=f"fi_{idx}")
-            ser = st.number_input("Nota del SER", 0.0, 10.0, float(df_grupo.at[idx, 'Ser']), 0.1, key=f"se_{idx}")
-            
-        if st.button("💾 Guardar y Calcular Calificación", type="primary", use_container_width=True):
-            df_grupo.at[idx, '1er Quiz'] = q1
-            df_grupo.at[idx, '2do Quiz'] = q2
-            df_grupo.at[idx, '3er Quiz'] = q3
-            df_grupo.at[idx, '4to Quiz'] = q4
-            df_grupo.at[idx, '1er Proyecto'] = p1
-            df_grupo.at[idx, 'Comprensión Oral'] = c_oral
-            df_grupo.at[idx, 'Comprensión Escrita'] = c_esc
-            df_grupo.at[idx, 'Producción Oral'] = p_oral
-            df_grupo.at[idx, 'Producción Escrita'] = p_esc
-            df_grupo.at[idx, 'Asistencia'] = asist
-            df_grupo.at[idx, 'Firmas'] = firmas
-            df_grupo.at[idx, 'Ser'] = ser
-            
-            t_quiz = (q1 + q2 + q3 + q4) / 4
-            df_grupo.at[idx, 'TOTAL QUIZ'] = round(t_quiz, 2)
-            df_grupo.at[idx, 'TOTAL PROYECTO'] = p1
-            
-            cfg = st.session_state.config_evaluacion
-            if cfg:
-                nota_final = ((t_quiz * cfg['quiz']) + (p1 * cfg['proyecto']) + 
-                              (c_oral * cfg['comp_oral']) + (c_esc * cfg['comp_esc']) + 
-                              (p_oral * cfg['prod_oral']) + (p_esc * cfg['prod_esc']) + 
-                              (asist * cfg['asistencia']) + (firmas * cfg['firmas']) + (ser * cfg['ser']))
-            else:
-                nota_final = (t_quiz + p1 + c_oral + c_esc + p_oral + p_esc + asist + firmas + ser) / 9
-                              
-            df_grupo.at[idx, 'TOTAL FINAL'] = round(nota_final, 2)
-            st.session_state.base_datos_grupos[grupo_seleccionado] = df_grupo
-            st.success(f"¡Guardado! {alumno_seleccionado} tiene un promedio final de: {round(nota_final, 2)} / 10")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.markdown("### 📝 Quizes y Proyectos (0-10)")
+                q1 = st.number_input("1er Quiz", 0.0, 10.0, float(df_grupo.at[idx, '1er Quiz']), 0.1, key=f"q1_{idx}")
+                q2 = st.number_input("2do Quiz", 0.0, 10.0, float(df_grupo.at[idx, '2do Quiz']), 0.1, key=f"q2_{idx}")
+                q3 = st.number_input("3er Quiz", 0.0, 10.0, float(df_grupo.at[idx, '3er Quiz']), 0.1, key=f"q3_{idx}")
+                q4 = st.number_input("4to Quiz", 0.0, 10.0, float(df_grupo.at[idx, '4to Quiz']), 0.1, key=f"q4_{idx}")
+                p1 = st.number_input("Nota del Proyecto", 0.0, 10.0, float(df_grupo.at[idx, '1er Proyecto']), 0.1, key=f"p1_{idx}")
+            with col2:
+                st.markdown("### 🗣️ Competencias (0-10)")
+                c_oral = st.number_input("Comprensión Oral", 0.0, 10.0, float(df_grupo.at[idx, 'Comprensión Oral']), 0.1, key=f"co_{idx}")
+                c_esc = st.number_input("Comprensión Escrita", 0.0, 10.0, float(df_grupo.at[idx, 'Comprensión Escrita']), 0.1, key=f"ce_{idx}")
+                p_oral = st.number_input("Producción Oral", 0.0, 10.0, float(df_grupo.at[idx, 'Producción Oral']), 0.1, key=f"po_{idx}")
+                p_esc = st.number_input("Producción Escrita", 0.0, 10.0, float(df_grupo.at[idx, 'Producción Escrita']), 0.1, key=f"pe_{idx}")
+            with col3:
+                st.markdown("### 📋 Formación Integral (0-10)")
+                asist = st.number_input("Asistencia", 0.0, 10.0, float(df_grupo.at[idx, 'Asistencia']), 0.1, key=f"as_{idx}")
+                firmas = st.number_input("Firmas / Tareas", 0.0, 10.0, float(df_grupo.at[idx, 'Firmas']), 0.1, key=f"fi_{idx}")
+                ser = st.number_input("Nota del SER", 0.0, 10.0, float(df_grupo.at[idx, 'Ser']), 0.1, key=f"se_{idx}")
+                
+            if st.button("💾 Guardar y Calcular Calificación", type="primary", use_container_width=True):
+                df_grupo.at[idx, '1er Quiz'] = q1
+                df_grupo.at[idx, '2do Quiz'] = q2
+                df_grupo.at[idx, '3er Quiz'] = q3
+                df_grupo.at[idx, '4to Quiz'] = q4
+                df_grupo.at[idx, '1er Proyecto'] = p1
+                df_grupo.at[idx, 'Comprensión Oral'] = c_oral
+                df_grupo.at[idx, 'Comprensión Escrita'] = c_esc
+                df_grupo.at[idx, 'Producción Oral'] = p_oral
+                df_grupo.at[idx, 'Producción Escrita'] = p_esc
+                df_grupo.at[idx, 'Asistencia'] = asist
+                df_grupo.at[idx, 'Firmas'] = firmas
+                df_grupo.at[idx, 'Ser'] = ser
+                
+                t_quiz = (q1 + q2 + q3 + q4) / 4
+                df_grupo.at[idx, 'TOTAL QUIZ'] = round(t_quiz, 2)
+                df_grupo.at[idx, 'TOTAL PROYECTO'] = p1
+                
+                cfg = st.session_state.config_evaluacion
+                if cfg:
+                    nota_final = ((t_quiz * cfg['quiz']) + (p1 * cfg['proyecto']) + 
+                                  (c_oral * cfg['comp_oral']) + (c_esc * cfg['comp_esc']) + 
+                                  (p_oral * cfg['prod_oral']) + (p_esc * cfg['prod_esc']) + 
+                                  (asist * cfg['asistencia']) + (firmas * cfg['firmas']) + (ser * cfg['ser']))
+                else:
+                    nota_final = (t_quiz + p1 + c_oral + c_esc + p_oral + p_esc + asist + firmas + ser) / 9
+                                  
+                df_grupo.at[idx, 'TOTAL FINAL'] = round(nota_final, 2)
+                st.session_state.base_datos_grupos[grupo_seleccionado] = df_grupo
+                st.success(f"¡Guardado! {alumno_seleccionado} tiene un promedio final de: {round(nota_final, 2)} / 10")
+        else:
+            st.warning("Este grupo no tiene alumnos registrados.")
 
     with tab_tabla:
         st.header(f"📊 Concentrado de Calificaciones - {grupo_seleccionado}")
         st.dataframe(df_grupo, use_container_width=True, hide_index=True)
 
     with tab_reportes:
-        st.header(f"🖨️ Imprimir Acta de Evaluación ({grupo_seleccionado})")
+        st.header(f"🖨 Imprimir Acta de Evaluación ({grupo_seleccionado})")
         
         def generar_pdf_grupo(df, g_name, cuatri):
             buffer = io.BytesIO()
@@ -258,12 +258,63 @@ else:
             buffer.seek(0)
             return buffer
 
-        pdf_data = generar_pdf_grupo(df_grupo, grupo_seleccionado, cuatrimestre)
+        if not df_grupo.empty:
+            pdf_data = generar_pdf_grupo(df_grupo, grupo_seleccionado, cuatrimestre)
+            st.download_button(
+                label=f"📥 DESCARGAR REPORTE DEL GRUPO {grupo_seleccionado} EN PDF",
+                data=pdf_data,
+                file_name=f"Reporte_Idiomas_{grupo_seleccionado}.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
+
+    # NUEVA PESTAÑA: LÓGICA DE CONTROL Y EDICIÓN DE GRUPOS / ALUMNOS
+    with tab_admin:
+        st.header("🛠 Panel de Control y Corrección de Errores")
+        st.write("Corrige fácilmente problemas de asignación manual de nombres o alumnos mal ubicados.")
         
-        st.download_button(
-            label=f"📥 DESCARGAR REPORTE DEL GRUPO {grupo_seleccionado} EN PDF",
-            data=pdf_data,
-            file_name=f"Reporte_Idiomas_{grupo_seleccionado}.pdf",
-            mime="application/pdf",
-            use_container_width=True
-        )
+        st.write("---")
+        # SECCIÓN 1: Editar Nombre de un Grupo
+        st.subheader("✏️ Editar Nombre del Grupo Actual")
+        st.caption(f"Cambia el nombre identificador del grupo: **{grupo_seleccionado}**")
+        nuevo_nombre_grupo = st.text_input("Escriba el nuevo nombre definitivo para este grupo:", grupo_seleccionado)
+        
+        if st.button("💾 Confirmar Cambio de Nombre del Grupo"):
+            nuevo_nombre_grupo = nuevo_nombre_grupo.strip().upper()
+            if nuevo_nombre_grupo == "":
+                st.error("El nombre no puede estar vacío.")
+            elif nuevo_nombre_grupo in st.session_state.base_datos_grupos and nuevo_nombre_grupo != grupo_seleccionado:
+                st.error("Ya existe otro grupo con ese nombre.")
+            else:
+                # Intercambiar la llave dentro de la estructura del diccionario
+                st.session_state.base_datos_grupos[nuevo_nombre_grupo] = st.session_state.base_datos_grupos.pop(grupo_seleccionado)
+                st.success(f"¡Se cambió el nombre del grupo con éxito a: {nuevo_nombre_grupo}!")
+                st.rerun()
+                
+        st.write("---")
+        # SECCIÓN 2: Mover Alumnos entre Grupos
+        st.subheader("🏃 Mover Alumno a Otro Grupo")
+        if not df_grupo.empty:
+            alumno_a_mover = st.selectbox("Seleccione el alumno que desea cambiar de salón:", df_grupo['Alumno'].tolist(), key="mover_alumno")
+            lista_destinos = [g for g in list(st.session_state.base_datos_grupos.keys()) if g != grupo_seleccionado]
+            
+            if lista_destinos:
+                grupo_destino = st.selectbox("Seleccione el grupo destino al que pertenece realmente:", lista_destinos)
+                
+                if st.button("🔀 Transferir Alumno de Forma Inmediata", type="secondary"):
+                    # Extraer la fila del alumno de este grupo
+                    fila_alumno = df_grupo[df_grupo['Alumno'] == alumno_a_mover]
+                    
+                    # Remover del grupo de origen
+                    st.session_state.base_datos_grupos[grupo_seleccionado] = df_grupo[df_grupo['Alumno'] != alumno_a_mover]
+                    
+                    # Insertar en el grupo de destino y reordenar alfabéticamente
+                    df_destino = st.session_state.base_datos_grupos[grupo_destino]
+                    st.session_state.base_datos_grupos[grupo_destino] = pd.concat([df_destino, fila_alumno]).sort_values(by="Alumno").reset_index(drop=True)
+                    
+                    st.success(f"¡Operación exitosa! {alumno_a_mover} ha sido removido de {grupo_seleccionado} e inscrito en {grupo_destino}.")
+                    st.rerun()
+            else:
+                st.warning("No hay otros grupos creados a los cuales transferir al alumno. Carga más listas primero.")
+        else:
+            st.warning("No hay alumnos en este grupo para transferir.")
