@@ -12,7 +12,7 @@ from reportlab.lib import colors
 # Configuración inicial de la página web
 st.set_page_config(page_title="GEM UNAQ - Control de Notas", layout="wide")
 
-# Nombre del archivo persistente en disco
+# Nombre del archivo persistente en disco para la memoria permanente
 ARCHIVO_BD = "base_datos_alumnos.json"
 
 def guardar_datos_permanentes():
@@ -39,51 +39,64 @@ def cargar_datos_permanentes():
 if 'base_datos_grupos' not in st.session_state:
     st.session_state.base_datos_grupos = cargar_datos_permanentes()
 
+st.title("✈️ Generador de Interfaces GEM - UNAQ")
+st.write("Herramienta con memoria permanente y extractor optimizado para listas de la UNAQ.")
+st.write("---")
+
+# BARRA LATERAL OPTIMIZADA: Ocupa mínimo espacio
+with st.sidebar:
+    st.header("📋 Datos del Curso")
+    cuatrimestre = st.text_input("Cuatrimestre actual:", "MAYO-AGOSTO 2026")
+    
+    # Si ya existen grupos, el selector global aparece aquí a la izquierda
+    if st.session_state.base_datos_grupos:
+        lista_de_grupos = list(st.session_state.base_datos_grupos.keys())
+        # Selector Único de Grupo que controla TODA la app automáticamente
+        grupo_seleccionado = st.selectbox("📂 Seleccione el Grupo para Trabajar:", lista_de_grupos)
+        
+        st.write("---")
+        # Sección expandible oculta para que no estorbe ni quite espacio de notas
+        with st.expander("🎯 Configurar Porcentajes de Evaluación"):
+            st.caption("Escriba los valores numéricos (Deben sumar 100%)")
+            v_quiz = st.number_input("Total QUIZ (%)", 0, 100, 20)
+            v_proy = st.number_input("Total PROYECTO (%)", 0, 100, 20)
+            st.markdown("**Competencias:**")
+            v_co = st.number_input("Comprensión Oral (%)", 0, 100, 10)
+            v_ce = st.number_input("Comprensión Escrita (%)", 0, 100, 10)
+            v_po = st.number_input("Producción Oral (%)", 0, 100, 10)
+            v_pe = st.number_input("Producción Escrita (%)", 0, 100, 10)
+            st.markdown("**Formación:**")
+            v_as = st.number_input("Asistencia (%)", 0, 100, 5)
+            v_fi = st.number_input("Firmas / Tareas (%)", 0, 100, 10)
+            v_se = st.number_input("SER (%)", 0, 100, 5)
+            
+            suma_total = v_quiz + v_proy + v_co + v_ce + v_po + v_pe + v_as + v_fi + v_se
+            if suma_total != 100:
+                st.error(f"Suma actual: {suma_total}%. Debe ser 100%.")
+            else:
+                st.success("Porcentajes válidos.")
+                st.session_state.config_evaluacion = {
+                    'quiz': v_quiz / 100, 'proyecto': v_proy / 100,
+                    'comp_oral': v_co / 100, 'comp_esc': v_ce / 100,
+                    'prod_oral': v_po / 100, 'prod_esc': v_pe / 100,
+                    'asistencia': v_as / 100, 'firmas': v_fi / 100, 'ser': v_se / 100
+                }
+        
+        st.write("---")
+        if st.button("🚨 BORRAR TODO / NUEVO PDF", use_container_width=True, type="secondary"):
+            st.session_state.base_datos_grupos = {}
+            if os.path.exists(ARCHIVO_BD):
+                os.remove(ARCHIVO_BD)
+            st.rerun()
+
+# Si los porcentajes no se han movido en el expander, se asegura un respaldo por defecto para evitar errores
 if 'config_evaluacion' not in st.session_state or not st.session_state.config_evaluacion:
     st.session_state.config_evaluacion = {
         'quiz': 0.20, 'proyecto': 0.20, 'comp_oral': 0.10, 'comp_esc': 0.10,
         'prod_oral': 0.10, 'prod_esc': 0.10, 'asistencia': 0.05, 'firmas': 0.10, 'ser': 0.05
     }
 
-st.title("✈️ Generador de Interfaces GEM - UNAQ")
-st.write("Herramienta con memoria permanente y extractor optimizado para listas de la UNAQ.")
-st.write("---")
-
-# BARRA LATERAL: Porcentajes de Notas
-with st.sidebar:
-    st.header("📋 Configuración de Evaluación")
-    cuatrimestre = st.text_input("Cuatrimestre actual:", "MAYO-AGOSTO 2026")
-    
-    st.write("---")
-    st.subheader("🎯 Porcentajes de Notas")
-    w_quiz = st.slider("Porcentaje Total QUIZ (%)", 0, 100, 20)
-    w_proyecto = st.slider("Porcentaje Total PROYECTO (%)", 0, 100, 20)
-    
-    st.markdown("**Competencias Lingüísticas:**")
-    w_comp_oral = st.slider("Comprensión Oral (%)", 0, 100, 10)
-    w_comp_esc = st.slider("Comprensión Escrita (%)", 0, 100, 10)
-    w_prod_oral = st.slider("Producción Oral (%)", 0, 100, 10)
-    w_prod_esc = st.slider("Producción Escrita (%)", 0, 100, 10)
-    
-    st.markdown("**Formación Integral:**")
-    w_asistencia = st.slider("Porcentaje ASISTENCIA (%)", 0, 100, 5)
-    w_firmas = st.slider("Porcentaje FIRMAS (%)", 0, 100, 10)
-    w_ser = st.slider("Porcentaje SER (%)", 0, 100, 5)
-    
-    suma_total = (w_quiz + w_proyecto + w_comp_oral + w_comp_esc + 
-                  w_prod_oral + w_prod_esc + w_asistencia + w_firmas + w_ser)
-                  
-    if suma_total != 100:
-        st.error(f"La suma actual es {suma_total}%. Debe ser exactamente 100%.")
-    else:
-        st.session_state.config_evaluacion = {
-            'quiz': w_quiz / 100, 'proyecto': w_proyecto / 100,
-            'comp_oral': w_comp_oral / 100, 'comp_esc': w_comp_esc / 100,
-            'prod_oral': w_prod_oral / 100, 'prod_esc': w_prod_esc / 100,
-            'asistencia': w_asistencia / 100, 'firmas': w_firmas / 100, 'ser': w_ser / 100
-        }
-
-# FLUJO PRINCIPAL MODIFICADO: Condicionar la vista inicial
+# PANTALLA DE CARGA: Si no hay datos guardados
 if not st.session_state.base_datos_grupos:
     st.header("📂 Carga Inicial de Listas (Detección Multigrupo)")
     st.info("💡 **Instrucciones:** Copia el texto completo de tus PDFs de asistencia de la UNAQ y pégalo aquí abajo.")
@@ -125,9 +138,7 @@ if not st.session_state.base_datos_grupos:
                 if any(bloqueo in linea_limpia.lower() for bloqueo in palabras_bloqueadas):
                     continue
                 
-                # CORRECCIÓN EXTRACCIÓN DE NOMBRE: Eliminar el plan de estudios pegado (ej. IDMA2024 o IDMA2022)
                 linea_limpia = re.sub(r'\b[A-Z]+\d{4}\b', '', linea_limpia, flags=re.IGNORECASE).strip()
-                # Eliminar números sueltos restantes
                 linea_limpia = re.sub(r'\b\d+\b', '', linea_limpia).strip()
                 
                 if len(linea_limpia.split()) >= 2 and not linea_limpia.startswith("A-FR-") and not "INGLES" in linea_limpia.upper():
@@ -152,37 +163,29 @@ if not st.session_state.base_datos_grupos:
             
             if st.session_state.base_datos_grupos:
                 guardar_datos_permanentes()
-                st.success("🎉 ¡Grupos creados exitosamente!")
+                st.success("🎉 ¡Grupos creados con éxito!")
                 st.rerun()
+
+# INTERFAZ SINCRONIZADA AUTOMÁTICAMENTE
 else:
-    # CORRECCIÓN DE PANTALLA INICIAL: Organizar las pestañas colocando la lista de grupos primero
+    # Extraemos el DataFrame correspondiente al grupo seleccionado a la izquierda
+    df_grupo = st.session_state.base_datos_grupos[grupo_seleccionado]
+    
     tab_tabla, tab_captura, tab_reportes, tab_admin = st.tabs([
-        "📊 Cuadrícula del Grupo (Inicio)", "📝 Captura Paso a Paso", "🖨️ Reportes PDF", "🛠️ Administrar Grupos y Alumnos"
+        "📊 Cuadrícula del Grupo", "📝 Captura Paso a Paso", "🖨️ Reportes PDF", "🛠️ Administrar Grupo Seleccionado"
     ])
     
-    lista_de_grupos = list(st.session_state.base_datos_grupos.keys())
-    
-    with st.sidebar:
-        st.write("---")
-        grupo_seleccionado = st.selectbox("📂 Cambiar de Grupo:", lista_de_grupos)
-        if st.button("🚨 BORRAR TODO / NUEVO PDF", use_container_width=True, type="secondary"):
-            st.session_state.base_datos_grupos = {}
-            if os.path.exists(ARCHIVO_BD):
-                os.remove(ARCHIVO_BD)
-            st.rerun()
-
-    df_grupo = st.session_state.base_datos_grupos[grupo_seleccionado]
-
-    # Pestaña 1: Ahora es la vista general por defecto al entrar
+    # Pestaña 1: Vista General Sincronizada
     with tab_tabla:
         st.header(f"📊 Concentrado de Calificaciones - {grupo_seleccionado}")
         st.write(f"Periodo: {cuatrimestre}")
         st.dataframe(df_grupo, use_container_width=True, hide_index=True)
 
+    # Pestaña 2: Captura Automática Filtrada por la Barra Izquierda
     with tab_captura:
-        st.subheader(f"✍️ Registro de Notas - Grupo: {grupo_seleccionado}")
+        st.subheader(f"✍️ Registro de Notas - Grupo Actual: {grupo_seleccionado}")
         if not df_grupo.empty:
-            alumno_seleccionado = st.selectbox("👤 Selecciona al alumno:", df_grupo['Alumno'].tolist())
+            alumno_seleccionado = st.selectbox("👤 Selecciona al alumno de este grupo:", df_grupo['Alumno'].tolist(), key=f"sel_al_{grupo_seleccionado}")
             idx = df_grupo[df_grupo['Alumno'] == alumno_seleccionado].index[0]
             
             col1, col2, col3 = st.columns(3)
@@ -232,10 +235,12 @@ else:
                 df_grupo.at[idx, 'TOTAL FINAL'] = round(nota_final, 2)
                 st.session_state.base_datos_grupos[grupo_seleccionado] = df_grupo
                 guardar_datos_permanentes()
-                st.success(f"¡Guardado! Promedio final: {round(nota_final, 2)} / 10")
+                st.success(f"¡Calificación Guardada para {alumno_seleccionado}!")
+                st.rerun()
         else:
-            st.warning("Este grupo no tiene alumnos registrados.")
+            st.warning("Este grupo no tiene alumnos.")
 
+    # Pestaña 3: Reportes Sincronizados
     with tab_reportes:
         st.header(f"🖨️ Imprimir Acta de Evaluación ({grupo_seleccionado})")
         def generar_pdf_grupo(df, g_name, cuatri):
@@ -261,46 +266,53 @@ else:
 
         if not df_grupo.empty:
             pdf_data = generar_pdf_grupo(df_grupo, grupo_seleccionado, cuatrimestre)
-            st.download_button(label=f"📥 DESCARGAR REPORTE EN PDF", data=pdf_data, file_name=f"Reporte_{grupo_seleccionado}.pdf", mime="application/pdf", use_container_width=True)
+            st.download_button(label=f"📥 DESCARGAR REPORTE EN PDF ({grupo_seleccionado})", data=pdf_data, file_name=f"Reporte_{grupo_seleccionado}.pdf", mime="application/pdf", use_container_width=True)
 
+    # Pestaña 4: ADMINISTRACIÓN COMPLETAMENTE AUTOSINCRONIZADA CON LA IZQUIERDA
     with tab_admin:
-        st.header("🛠️ Panel de Control")
+        st.header(f"🛠️ Panel de Control - Administrando: {grupo_seleccionado}")
+        
+        # Corrección de Nombre de Grupo
         st.subheader("✏️ 1. Cambiar Nombre a este Grupo")
-        nuevo_nombre_grupo = st.text_input("Escriba el nuevo nombre:", grupo_seleccionado, key="txt_gname")
-        if st.button("💾 Guardar Nuevo Nombre del Grupo"):
+        nuevo_nombre_grupo = st.text_input("Escriba el nuevo nombre:", grupo_seleccionado, key=f"txt_gname_{grupo_seleccionado}")
+        if st.button("💾 Guardar Nuevo Nombre del Grupo", key=f"btn_gname_{grupo_seleccionado}"):
             nuevo_nombre_grupo = nuevo_nombre_grupo.strip().upper()
             if nuevo_nombre_grupo != "" and nuevo_nombre_grupo != grupo_seleccionado:
                 st.session_state.base_datos_grupos[nuevo_nombre_grupo] = st.session_state.base_datos_grupos.pop(grupo_seleccionado)
                 guardar_datos_permanentes()
-                st.success("¡Grupo renombrado!")
+                st.success("¡Grupo renombrado exitosamente!")
                 st.rerun()
 
         st.write("---")
-        st.subheader("👤 2. Corregir Nombre de un Alumno")
+        # Corrección de Nombre de Alumno Sincronizado
+        st.subheader("👤 2. Corregir Nombre de un Alumno de este Grupo")
         if not df_grupo.empty:
-            alumno_a_editar = st.selectbox("Seleccione al alumno:", df_grupo['Alumno'].tolist(), key="sel_ed_al")
-            nuevo_nombre_alumno = st.text_input("Corrija el nombre:", alumno_a_editar, key="txt_ed_al").strip().upper()
-            if st.button("💾 Guardar Corrección del Nombre"):
+            alumno_a_editar = st.selectbox("Seleccione al alumno con error:", df_grupo['Alumno'].tolist(), key=f"sel_ed_al_{grupo_seleccionado}")
+            nuevo_nombre_alumno = st.text_input("Corrija el nombre:", alumno_a_editar, key=f"txt_ed_al_{grupo_seleccionado}").strip().upper()
+            if st.button("💾 Guardar Corrección del Nombre", key=f"btn_ed_al_{grupo_seleccionado}"):
                 if nuevo_nombre_alumno != "":
                     idx_al = df_grupo[df_grupo['Alumno'] == alumno_a_editar].index[0]
                     df_grupo.at[idx_al, 'Alumno'] = nuevo_nombre_alumno
                     st.session_state.base_datos_grupos[grupo_seleccionado] = df_grupo.sort_values(by="Alumno").reset_index(drop=True)
                     guardar_datos_permanentes()
-                    st.success("¡Nombre corregido!")
+                    st.success("¡Nombre del alumno corregido!")
                     st.rerun()
 
         st.write("---")
-        st.subheader("🏃 3. Mover Alumno a Otro Grupo")
+        # Transferencia de Alumno Sincronizada
+        st.subheader("🏃 3. Mover Alumno de este Grupo a Otro Salón")
         if not df_grupo.empty:
-            alumno_a_mover = st.selectbox("Seleccione al alumno a transferir:", df_grupo['Alumno'].tolist(), key="mover_alumno")
+            alumno_a_mover = st.selectbox("Seleccione al alumno a transferir:", df_grupo['Alumno'].tolist(), key=f"mover_al_{grupo_seleccionado}")
             lista_destinos = [g for g in list(st.session_state.base_datos_grupos.keys()) if g != grupo_seleccionado]
             if lista_destinos:
-                grupo_destino = st.selectbox("Seleccione el grupo destino:", lista_destinos, key="sel_dest")
-                if st.button("🔀 Confirmar Transferencia"):
+                grupo_destino = st.selectbox("Seleccione el grupo destino:", lista_destinos, key=f"sel_dest_{grupo_seleccionado}")
+                if st.button("🔀 Confirmar Transferencia", key=f"btn_mov_{grupo_seleccionado}"):
                     fila_alumno = df_grupo[df_grupo['Alumno'] == alumno_a_mover]
                     st.session_state.base_datos_grupos[grupo_seleccionado] = df_grupo[df_grupo['Alumno'] != alumno_a_mover]
                     df_destino = st.session_state.base_datos_grupos[grupo_destino]
                     st.session_state.base_datos_grupos[grupo_destino] = pd.concat([df_destino, fila_alumno]).sort_values(by="Alumno").reset_index(drop=True)
                     guardar_datos_permanentes()
-                    st.success("¡Alumno transferido!")
+                    st.success(f"¡Alumno transferido exitosamente a {grupo_destino}!")
                     st.rerun()
+            else:
+                st.warning("No tienes otros grupos creados para poder transferir alumnos.")
