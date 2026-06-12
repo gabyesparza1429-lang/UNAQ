@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import io
 import re
+import json
+import os
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -10,14 +12,44 @@ from reportlab.lib import colors
 # Configuración inicial de la página web
 st.set_page_config(page_title="GEM UNAQ - Control de Notas", layout="wide")
 
-# Inicialización de la base de datos de grupos y alumnos en la sesión de la app
+# NOMBRE DEL ARCHIVO LOCAL PARA GUARDAR LOS DATOS DE FORMA PERMANENTE
+ARCHIVO_BD = "base_datos_alumnos.json"
+
+def guardar_datos_permanentes():
+    """Convierte los DataFrames de la sesión a JSON y los guarda en un archivo físico en el servidor."""
+    datos_exportar = {}
+    for grupo, df in st.session_state.base_datos_grupos.items():
+        datos_exportar[grupo] = df.to_dict(orient="records")
+    with open(ARCHIVO_BD, "w", encoding="utf-8") as f:
+        json.dump(datos_exportar, f, ensure_ascii=False, indent=4)
+
+def cargar_datos_permanentes():
+    """Lee el archivo JSON local si existe y reconstruye los DataFrames al abrir la app."""
+    if os.path.exists(ARCHIVO_BD):
+        try:
+            with open(ARCHIVO_BD, "r", encoding="utf-8") as f:
+                datos_importados = json.load(f)
+            diccionario_final = {}
+            for grupo, lista_filas in datos_importados.items():
+                diccionario_final[grupo] = pd.DataFrame(lista_filas)
+            return diccionario_final
+        except:
+            return {}
+    return {}
+
+# Inicialización segura de la base de datos buscando la persistencia en disco primero
 if 'base_datos_grupos' not in st.session_state:
-    st.session_state.base_datos_grupos = {} # Estructura: {'GRUPO': DataFrame}
-if 'config_evaluacion' not in st.session_state:
-    st.session_state.config_evaluacion = {}
+    st.session_state.base_datos_grupos = cargar_datos_permanentes()
+
+# PROTECCIÓN CONTRA EL KEYERROR: Inicializar los porcentajes por defecto de forma segura
+if 'config_evaluacion' not in st.session_state or not st.session_state.config_evaluacion:
+    st.session_state.config_evaluacion = {
+        'quiz': 0.20, 'proyecto': 0.20, 'comp_oral': 0.10, 'comp_esc': 0.10,
+        'prod_oral': 0.10, 'prod_esc': 0.10, 'asistencia': 0.05, 'firmas': 0.10, 'ser': 0.05
+    }
 
 st.title("✈️ Generador de Interfaces GEM - UNAQ (Múltiples Grupos)")
-st.write("Extractor inteligente multiclase especializado en sábanas y listas de asistencia de la UNAQ.")
+st.write("Herramienta con memoria permanente y extractor optimizado para listas de la UNAQ.")
 st.write("---")
 
 # BARRA LATERAL: Configuración de Criterios y Ponderaciones
@@ -57,19 +89,18 @@ with st.sidebar:
             'asistencia': w_asistencia / 100, 'firmas': w_firmas / 100, 'ser': w_ser / 100
         }
 
-# CUERPO PRINCIPAL: Extracción y separación por grupos con nueva regla Regex
+# CUERPO PRINCIPAL: Si no hay grupos guardados en disco, pide pegar el PDF
 if not st.session_state.base_datos_grupos:
-    st.header("📂 Carga Masiva de PDFs (Detección de Múltiples Grupos)")
-    st.info("💡 **Instrucciones:** Copia el texto completo del PDF de la UNAQ y pégalo abajo. El sistema renombrará los grupos al formato limpio (Ej: IDMA A1.4).")
+    st.header("📂 Carga Inicial de Listas (Detección Multigrupo)")
+    st.info("💡 **Instrucciones:** Copia el texto completo de tus PDFs de asistencia de la UNAQ y pégalo aquí abajo. El sistema creará los salones automáticamente y los recordará para siempre.")
     
     texto_pegado = st.text_area("📋 Pega aquí todo el contenido de tus listas de la UNAQ:", height=400, placeholder="Pega el texto aquí...")
     
-    if st.button("✨ Procesar, Separar y Create Grupos", type="primary", use_container_width=True):
+    if st.button("✨ Procesar, Separar y Crear Grupos", type="primary", use_container_width=True):
         if texto_pegado.strip() == "":
             st.warning("El cuadro de texto está vacío.")
         else:
             lineas = texto_pegado.split("\n")
-            
             palabras_bloqueadas = [
                 "universidad", "aeronáutica", "querétaro", "departamento", "servicios", "escolares",
                 "lista", "asistencia", "clave", "materia", "cuatrimestre", "docente",
@@ -84,14 +115,15 @@ if not st.session_state.base_datos_grupos:
             
             for linea in lineas:
                 linea_limpia = linea.replace('"', '').replace(',', '').replace('\'', '').strip()
-                
                 if not linea_limpia or len(linea_limpia) < 3:
                     continue
                 
-                match_frn = re.search(r'FRN-A(\d\.\d)', linea_limpia, re.IGNORECASE)
+                # Regla de extracción: busca el nivel de idioma (ej. A1.4 o A2.2)
+                match_frn = re.search(r'A?-?FR-?A?(\d\.\d)', linea_limpia, re.IGNORECASE)
                 if match_frn:
                     nivel_detectado = f"A{match_frn.group(1)}"
                 
+                # Regla de extracción: busca la carrera en el plan de estudios (ej. IDMA2024 -> IDMA)
                 match_plan = re.search(r'\b([A-Z]+)\d{4}\b', linea_limpia, re.IGNORECASE)
                 if match_plan:
                     carrera_detectada = match_plan.group(1).upper()
@@ -104,13 +136,11 @@ if not st.session_state.base_datos_grupos:
                     continue
                 
                 linea_limpia = re.sub(r'\b\d+\b', '', linea_limpia).strip()
-                
                 if len(linea_limpia.split()) >= 2 and not linea_limpia.startswith("A-FR-") and not "INGLES" in linea_limpia.upper():
                     if grupo_actual not in diccionario_grupos:
                         diccionario_grupos[grupo_actual] = []
                     diccionario_grupos[grupo_actual].append(linea_limpia.upper())
             
-            grupos_creados = 0
             for grupo, lista_alumnos in diccionario_grupos.items():
                 lista_final_alumnos = sorted(list(set(lista_alumnos)))
                 if lista_final_alumnos and grupo != "GRUPO NO ESPECIFICADO":
@@ -125,30 +155,31 @@ if not st.session_state.base_datos_grupos:
                         'Asistencia': [0.0]*len(lista_final_alumnos), 'Firmas': [0.0]*len(lista_final_alumnos),
                         'Ser': [0.0]*len(lista_final_alumnos), 'TOTAL FINAL': [0.0]*len(lista_final_alumnos)
                     })
-                    grupos_creados += 1
             
-            if grupos_creados > 0:
-                st.success(f"🎉 ¡Éxito! Se generaron {grupos_creados} grupos con formato limpio (Ej: IDMA A1.4).")
+            if st.session_state.base_datos_grupos:
+                guardar_datos_permanentes()
+                st.success("🎉 ¡Éxito! Grupos guardados permanentemente.")
                 st.rerun()
             else:
-                st.error("No se pudieron estructurar los grupos. Revisa el formato del texto pegado.")
+                st.error("No se pudieron estructurar los grupos. Intenta copiar todo el texto del PDF de nuevo.")
 
-# INTERFAZ DE CAPTURA, REPORTES Y ADMINISTRACIÓN
+# INTERFAZ DE TRABAJO DIARIO (CUANDO YA HAY DATOS GUARDADOS)
 else:
     col_g1, col_g2 = st.columns([3, 1])
     with col_g1:
         lista_de_grupos = list(st.session_state.base_datos_grupos.keys())
-        grupo_seleccionado = st.selectbox("📂 Seleccione el Grupo que desea calificar actualmente:", lista_de_grupos)
+        grupo_seleccionado = st.selectbox("📂 Seleccione el Grupo para trabajar actualmente:", lista_de_grupos)
     with col_g2:
         st.write(" ")
         st.write(" ")
-        if st.button("🔄 Cargar otro PDF / Resetear", use_container_width=True):
+        if st.button("🚨 REINICIAR TODO Y CARGAR NUEVO PDF", use_container_width=True, type="secondary"):
             st.session_state.base_datos_grupos = {}
+            if os.path.exists(ARCHIVO_BD):
+                os.remove(ARCHIVO_BD)
             st.rerun()
             
     df_grupo = st.session_state.base_datos_grupos[grupo_seleccionado]
     
-    # Añadida la pestaña de Administración solicitada
     tab_captura, tab_tabla, tab_reportes, tab_admin = st.tabs([
         "📝 Captura Paso a Paso", "📊 Cuadrícula del Grupo", "🖨️ Reportes PDF", "🛠️ Administrar Grupos y Alumnos"
     ])
@@ -198,17 +229,15 @@ else:
                 df_grupo.at[idx, 'TOTAL PROYECTO'] = p1
                 
                 cfg = st.session_state.config_evaluacion
-                if cfg:
-                    nota_final = ((t_quiz * cfg['quiz']) + (p1 * cfg['proyecto']) + 
-                                  (c_oral * cfg['comp_oral']) + (c_esc * cfg['comp_esc']) + 
-                                  (p_oral * cfg['prod_oral']) + (p_esc * cfg['prod_esc']) + 
-                                  (asist * cfg['asistencia']) + (firmas * cfg['firmas']) + (ser * cfg['ser']))
-                else:
-                    nota_final = (t_quiz + p1 + c_oral + c_esc + p_oral + p_esc + asist + firmas + ser) / 9
+                nota_final = ((t_quiz * cfg['quiz']) + (p1 * cfg['proyecto']) + 
+                              (c_oral * cfg['comp_oral']) + (c_esc * cfg['comp_esc']) + 
+                              (p_oral * cfg['prod_oral']) + (p_esc * cfg['prod_esc']) + 
+                              (asist * cfg['asistencia']) + (firmas * cfg['firmas']) + (ser * cfg['ser']))
                                   
                 df_grupo.at[idx, 'TOTAL FINAL'] = round(nota_final, 2)
                 st.session_state.base_datos_grupos[grupo_seleccionado] = df_grupo
-                st.success(f"¡Guardado! {alumno_seleccionado} tiene un promedio final de: {round(nota_final, 2)} / 10")
+                guardar_datos_permanentes() # Guarda de inmediato en disco seguro
+                st.success(f"¡Guardado con éxito! Nota de {alumno_seleccionado}: {round(nota_final, 2)} / 10")
         else:
             st.warning("Este grupo no tiene alumnos registrados.")
 
@@ -217,7 +246,7 @@ else:
         st.dataframe(df_grupo, use_container_width=True, hide_index=True)
 
     with tab_reportes:
-        st.header(f"🖨 Imprimir Acta de Evaluación ({grupo_seleccionado})")
+        st.header(f"🖨️ Imprimir Acta de Evaluación ({grupo_seleccionado})")
         
         def generar_pdf_grupo(df, g_name, cuatri):
             buffer = io.BytesIO()
@@ -268,53 +297,59 @@ else:
                 use_container_width=True
             )
 
-    # NUEVA PESTAÑA: LÓGICA DE CONTROL Y EDICIÓN DE GRUPOS / ALUMNOS
     with tab_admin:
-        st.header("🛠 Panel de Control y Corrección de Errores")
+        st.header("🛠️ Panel de Control y Corrección de Errores")
         st.write("Corrige fácilmente problemas de asignación manual de nombres o alumnos mal ubicados.")
         
         st.write("---")
-        # SECCIÓN 1: Editar Nombre de un Grupo
-        st.subheader("✏️ Editar Nombre del Grupo Actual")
-        st.caption(f"Cambia el nombre identificador del grupo: **{grupo_seleccionado}**")
-        nuevo_nombre_grupo = st.text_input("Escriba el nuevo nombre definitivo para este grupo:", grupo_seleccionado)
+        # CORRECCIÓN NOMBRE GRUPO
+        st.subheader("✏️ 1. Cambiar Nombre a este Grupo")
+        st.caption(f"Cambia el nombre identificador del grupo actual: **{grupo_seleccionado}**")
+        nuevo_nombre_grupo = st.text_input("Escriba el nuevo nombre para este salón:", grupo_seleccionado, key="txt_gname")
         
-        if st.button("💾 Confirmar Cambio de Nombre del Grupo"):
+        if st.button("💾 Guardar Nuevo Nombre del Grupo"):
             nuevo_nombre_grupo = nuevo_nombre_grupo.strip().upper()
-            if nuevo_nombre_grupo == "":
-                st.error("El nombre no puede estar vacío.")
-            elif nuevo_nombre_grupo in st.session_state.base_datos_grupos and nuevo_nombre_grupo != grupo_seleccionado:
-                st.error("Ya existe otro grupo con ese nombre.")
-            else:
-                # Intercambiar la llave dentro de la estructura del diccionario
+            if nuevo_nombre_grupo != "" and nuevo_nombre_grupo != grupo_seleccionado:
                 st.session_state.base_datos_grupos[nuevo_nombre_grupo] = st.session_state.base_datos_grupos.pop(grupo_seleccionado)
-                st.success(f"¡Se cambió el nombre del grupo con éxito a: {nuevo_nombre_grupo}!")
+                guardar_datos_permanentes()
+                st.success(f"¡Grupo renombrado a {nuevo_nombre_grupo} con éxito!")
                 st.rerun()
-                
+
         st.write("---")
-        # SECCIÓN 2: Mover Alumnos entre Grupos
-        st.subheader("🏃 Mover Alumno a Otro Grupo")
+        # CORRECCIÓN NOMBRE ALUMNO
+        st.subheader("👤 2. Corregir Nombre de un Alumno")
         if not df_grupo.empty:
-            alumno_a_mover = st.selectbox("Seleccione el alumno que desea cambiar de salón:", df_grupo['Alumno'].tolist(), key="mover_alumno")
+            alumno_a_editar = st.selectbox("Seleccione el alumno cuyo nombre tiene un error:", df_grupo['Alumno'].tolist(), key="sel_ed_al")
+            nuevo_nombre_alumno = st.text_input("Corrija el nombre aquí:", alumno_a_editar, key="txt_ed_al").strip().upper()
+            
+            if st.button("💾 Guardar Corrección del Nombre"):
+                if nuevo_nombre_alumno != "":
+                    idx_al = df_grupo[df_grupo['Alumno'] == alumno_a_editar].index[0]
+                    df_grupo.at[idx_al, 'Alumno'] = nuevo_nombre_alumno
+                    st.session_state.base_datos_grupos[grupo_seleccionado] = df_grupo.sort_values(by="Alumno").reset_index(drop=True)
+                    guardar_datos_permanentes()
+                    st.success("¡Nombre corregido exitosamente!")
+                    st.rerun()
+
+        st.write("---")
+        # MOVER ALUMNOS ENTRE GRUPOS
+        st.subheader("🏃 3. Mover Alumno a Otro Grupo")
+        if not df_grupo.empty:
+            alumno_a_mover = st.selectbox("Seleccione el alumno que desea transferir:", df_grupo['Alumno'].tolist(), key="mover_alumno")
             lista_destinos = [g for g in list(st.session_state.base_datos_grupos.keys()) if g != grupo_seleccionado]
             
             if lista_destinos:
-                grupo_destino = st.selectbox("Seleccione el grupo destino al que pertenece realmente:", lista_destinos)
-                
-                if st.button("🔀 Transferir Alumno de Forma Inmediata", type="secondary"):
-                    # Extraer la fila del alumno de este grupo
+                grupo_destino = st.selectbox("Seleccione el grupo al que pertenece realmente:", lista_destinos, key="sel_dest")
+                if st.button("🔀 Confirmar Transferencia del Alumno", type="primary"):
                     fila_alumno = df_grupo[df_grupo['Alumno'] == alumno_a_mover]
-                    
-                    # Remover del grupo de origen
+                    # Quitar del origen
                     st.session_state.base_datos_grupos[grupo_seleccionado] = df_grupo[df_grupo['Alumno'] != alumno_a_mover]
-                    
-                    # Insertar en el grupo de destino y reordenar alfabéticamente
+                    # Insertar en el destino
                     df_destino = st.session_state.base_datos_grupos[grupo_destino]
                     st.session_state.base_datos_grupos[grupo_destino] = pd.concat([df_destino, fila_alumno]).sort_values(by="Alumno").reset_index(drop=True)
                     
-                    st.success(f"¡Operación exitosa! {alumno_a_mover} ha sido removido de {grupo_seleccionado} e inscrito en {grupo_destino}.")
+                    guardar_datos_permanentes() # Forzar persistencia en disco duro
+                    st.success(f"¡{alumno_a_mover} movido correctamente a {grupo_destino}!")
                     st.rerun()
             else:
-                st.warning("No hay otros grupos creados a los cuales transferir al alumno. Carga más listas primero.")
-        else:
-            st.warning("No hay alumnos en este grupo para transferir.")
+                st.warning("No tienes otros grupos activos creados para poder transferir alumnos.")
