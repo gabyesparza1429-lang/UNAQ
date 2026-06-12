@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import io
+import re
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -9,27 +10,25 @@ from reportlab.lib import colors
 # Configuración inicial de la página web
 st.set_page_config(page_title="GEM UNAQ - Control de Notas", layout="wide")
 
-# Inicialización de variables globales en la sesión de la app
-if 'alumnos_db' not in st.session_state:
-    st.session_state.alumnos_db = None
+# Inicialización de la base de datos de grupos y alumnos en la sesión de la app
+if 'base_datos_grupos' not in st.session_state:
+    st.session_state.base_datos_grupos = {} # Estructura: {'GRUPO_1': DataFrame, 'GRUPO_2': DataFrame}
 if 'config_evaluacion' not in st.session_state:
     st.session_state.config_evaluacion = {}
 
-st.title("✈️ Generador de Interfaces GEM - UNAQ")
-st.write("Herramienta simplificada de captura de calificaciones bimestrales con competencias lingüísticas.")
+st.title("✈️ Generador de Interfaces GEM - UNAQ (Múltiples Grupos)")
+st.write("Extractor inteligente multiclase especializado en sábanas y listas de asistencia de la UNAQ.")
 st.write("---")
 
-# BARRA LATERAL: Configuración Inicial del Cuatrimestre y Criterios
+# BARRA LATERAL: Configuración de Criterios y Ponderaciones
 with st.sidebar:
-    st.header("📋 Configuración del Curso")
-    cuatrimestre = st.text_input("Cuatrimestre actual:", "ENERO-ABRIL 2026")
-    grupo_nombre = st.text_input("Grupo / Clase:", "IAM A2.1")
+    st.header("📋 Configuración de Evaluación")
+    cuatrimestre = st.text_input("Cuatrimestre actual:", "MAYO-AGOSTO 2026")
     
     st.write("---")
-    st.subheader("🎯 Porcentajes de Evaluación")
-    st.caption("Define los rubros y sus valores (Asegúrate que sumen 100%)")
+    st.subheader("🎯 Porcentajes de Notas")
+    st.caption("Asegúrate de que la suma de todos los rubros dé exactamente 100%")
     
-    # Configuración dinámica de criterios y competencias solicitadas
     w_quiz = st.slider("Porcentaje Total QUIZ (%)", 0, 100, 20)
     w_proyecto = st.slider("Porcentaje Total PROYECTO (%)", 0, 100, 20)
     
@@ -39,7 +38,7 @@ with st.sidebar:
     w_prod_oral = st.slider("Producción Oral (%)", 0, 100, 10)
     w_prod_esc = st.slider("Producción Escrita (%)", 0, 100, 10)
     
-    st.markdown("**Formación:**")
+    st.markdown("**Formación Integral:**")
     w_asistencia = st.slider("Porcentaje ASISTENCIA (%)", 0, 100, 5)
     w_firmas = st.slider("Porcentaje FIRMAS (%)", 0, 100, 10)
     w_ser = st.slider("Porcentaje SER (%)", 0, 100, 5)
@@ -58,114 +57,167 @@ with st.sidebar:
             'asistencia': w_asistencia / 100, 'firmas': w_firmas / 100, 'ser': w_ser / 100
         }
 
-    st.write("---")
-    st.subheader("📂 Carga de Alumnos")
-    archivo = st.file_uploader("Arrastra aquí el Excel con la lista de alumnos:", type=["xlsx", "csv"])
+# CUERPO PRINCIPAL: Extracción y separación por grupos
+if not st.session_state.base_datos_grupos:
+    st.header("📂 Carga Masiva de PDFs (Detección de Múltiples Grupos)")
+    st.info("💡 **Instrucciones:** Abre tu PDF completo de la UNAQ (el que tiene todas las materias y grupos juntos), presiona **Ctrl + A** para seleccionar todo, luego **Ctrl + C** para copiar, y pégalo aquí abajo. El sistema detectará los diferentes grupos y acomodará a cada alumno automáticamente.")
     
-    if archivo is not None and st.button("Cargar y Procesar Lista"):
-        try:
-            df_raw = pd.read_csv(archivo) if archivo.name.endswith('.csv') else pd.read_excel(archivo)
+    texto_pegado = st.text_area("📋 Pega aquí todo el contenido de tus listas de la UNAQ:", height=400, placeholder="Pega el texto aquí...")
+    
+    if st.button("✨ Procesar, Separar y Crear Grupos", type="primary", use_container_width=True):
+        if texto_pegado.strip() == "":
+            st.warning("El cuadro de texto está vacío.")
+        else:
+            lineas = texto_pegado.split("\n")
             
-            fila_encabezado = 0
-            for r_idx in range(min(5, len(df_raw))):
-                if 'nombre' in [str(c).lower() for c in df_raw.iloc[r_idx].values]:
-                    fila_encabezado = r_idx + 1
-                    break
+            # Palabras institucionales que no son nombres de alumnos
+            palabras_bloqueadas = [
+                "universidad", "aeronáutica", "querétaro", "departamento", "servicios", "escolares",
+                "lista", "asistencia", "clave", "materia", "cuatrimestre", "docente",
+                "carrera", "ciclo", "matricula", "nombre", "plan", "estudios", "asistencias",
+                "inglés", "ingenierías", "oscar", "hernandez", "flores", "page", "clases", "unq"
+            ]
             
-            df_clean = pd.read_csv(archivo, skiprows=fila_encabezado) if archivo.name.endswith('.csv') else pd.read_excel(archivo, skiprows=fila_encabezado)
-            df_clean.columns = [str(c).strip().lower() for c in df_clean.columns]
+            diccionario_grupos = {}
+            grupo_actual = "GRUPO NO ESPECIFICADO"
             
-            col_nombre = [c for c in df_clean.columns if 'nombre' in c][0]
-            lista_alumnos = df_clean[col_nombre].dropna().astype(str).tolist()
-            lista_alumnos = [a.strip() for a in lista_alumnos if a.strip() != '' and 'nombre' not in a.lower()]
+            for linea in lineas:
+                linea_limpia = linea.replace('"', '').replace(',', '').replace('\'', '').strip()
+                
+                if not linea_limpia or len(linea_limpia) < 3:
+                    continue
+                
+                # DETECCIÓN DE NUEVO GRUPO (Busca patrones como 26MA-6IDMA, 26MA-3IECSA, etc.)
+                match_grupo = re.search(r'\b\d{2}MA-\d[A-Z]+\b', linea_limpia)
+                if match_grupo:
+                    grupo_actual = match_grupo.group(0)
+                    if grupo_actual not in diccionario_grupos:
+                        diccionario_grupos[grupo_actual] = []
+                    continue
+                
+                # Saltar líneas informativas o basura de formato
+                if any(bloqueo in linea_limpia.lower() for bloqueo in palabras_bloqueadas):
+                    continue
+                
+                # Quitar números sueltos (matrículas o número de lista)
+                linea_limpia = re.sub(r'\b\d+\b', '', linea_limpia).strip()
+                
+                # Verificar que cumpla características de un nombre real de alumno
+                if len(linea_limpia.split()) >= 2 and not linea_limpia.startswith("A-FR-") and not "INGLES" in linea_limpia.upper():
+                    if grupo_actual not in diccionario_grupos:
+                        diccionario_grupos[grupo_actual] = []
+                    diccionario_grupos[grupo_actual].append(linea_limpia.upper())
             
-            # Crear estructura de datos limpia con los nuevos campos de idiomas añadidos
-            st.session_state.alumnos_db = pd.DataFrame({
-                'Alumno': lista_alumnos,
-                '1er Quiz': [0.0]*len(lista_alumnos), '2do Quiz': [0.0]*len(lista_alumnos),
-                '3er Quiz': [0.0]*len(lista_alumnos), '4to Quiz': [0.0]*len(lista_alumnos),
-                'TOTAL QUIZ': [0.0]*len(lista_alumnos),
-                '1er Proyecto': [0.0]*len(lista_alumnos), 'TOTAL PROYECTO': [0.0]*len(lista_alumnos),
-                'Comprensión Oral': [0.0]*len(lista_alumnos), 'Comprensión Escrita': [0.0]*len(lista_alumnos),
-                'Producción Oral': [0.0]*len(lista_alumnos), 'Producción Escrita': [0.0]*len(lista_alumnos),
-                'Asistencia': [0.0]*len(lista_alumnos), 'Firmas': [0.0]*len(lista_alumnos),
-                'Ser': [0.0]*len(lista_alumnos), 'TOTAL FINAL': [0.0]*len(lista_alumnos)
-            })
-            st.success(f"¡Se registraron {len(lista_alumnos)} alumnos exitosamente!")
-        except Exception as e:
-            st.error(f"Error procesando el formato del archivo: {e}")
+            # Limpiar listas, remover duplicados por grupo y guardarlo en la sesión
+            grupos_creados = 0
+            for grupo, lista_alumnos in diccionario_grupos.items():
+                lista_final_alumnos = sorted(list(set(lista_alumnos)))
+                if lista_final_alumnos:
+                    # Crear el DataFrame estructurado de notas para cada grupo detectado
+                    st.session_state.base_datos_grupos[grupo] = pd.DataFrame({
+                        'Alumno': lista_final_alumnos,
+                        '1er Quiz': [0.0]*len(lista_final_alumnos), '2do Quiz': [0.0]*len(lista_final_alumnos),
+                        '3er Quiz': [0.0]*len(lista_final_alumnos), '4to Quiz': [0.0]*len(lista_final_alumnos),
+                        'TOTAL QUIZ': [0.0]*len(lista_final_alumnos),
+                        '1er Proyecto': [0.0]*len(lista_final_alumnos), 'TOTAL PROYECTO': [0.0]*len(lista_final_alumnos),
+                        'Comprensión Oral': [0.0]*len(lista_final_alumnos), 'Comprensión Escrita': [0.0]*len(lista_final_alumnos),
+                        'Producción Oral': [0.0]*len(lista_alumnos_filt := lista_final_alumnos), 'Producción Escrita': [0.0]*len(lista_final_alumnos),
+                        'Asistencia': [0.0]*len(lista_final_alumnos), 'Firmas': [0.0]*len(lista_final_alumnos),
+                        'Ser': [0.0]*len(lista_final_alumnos), 'TOTAL FINAL': [0.0]*len(lista_final_alumnos)
+                    })
+                    grupos_creados += 1
+            
+            if grupos_creados > 0:
+                st.success(f"🎉 ¡Éxito! El sistema detectó y configuró automáticamente {grupos_creados} grupos separados con sus respectivos alumnos.")
+                st.rerun()
+            else:
+                st.error("No se detectaron grupos válidos en el texto pegado. Asegúrate de copiar el PDF completo.")
 
-# INTERFAZ DE USUARIO PRINCIPAL
-if st.session_state.alumnos_db is not None:
-    tab_captura, tab_tabla, tab_reportes = st.tabs(["📝 Captura Paso a Paso", "📊 Cuadrícula General", "🖨️ Generar PDFs"])
+# INTERFAZ DE CAPTURA Y REPORTES CUANDO YA HAY GRUPOS ACTIVOS
+else:
+    col_g1, col_g2 = st.columns([3, 1])
+    with col_g1:
+        # Selector de grupos detectados en el PDF
+        lista_de_grupos = list(st.session_state.base_datos_grupos.keys())
+        grupo_seleccionado = st.selectbox("📂 Seleccione el Grupo que desea calificar actualmente:", lista_de_grupos)
+    with col_g2:
+        st.write(" ")
+        st.write(" ")
+        if st.button("🔄 Cargar otro PDF / Resetear", use_container_width=True):
+            st.session_state.base_datos_grupos = {}
+            st.rerun()
+            
+    # Trabajar con el dataframe del grupo elegido
+    df_grupo = st.session_state.base_datos_grupos[grupo_seleccionado]
+    
+    tab_captura, tab_tabla, tab_reportes = st.tabs(["📝 Captura Paso a Paso", "📊 Cuadrícula del Grupo", "🖨️ Reportes PDF"])
     
     with tab_captura:
-        st.header("✍️ Registro de Notas por Alumno")
-        st.info("Selecciona el alumno y actualiza sus notas en cada sección.")
+        st.subheader(f"✍️ Evaluando Grupo: {grupo_seleccionado}")
         
-        alumno_seleccionado = st.selectbox("👤 Selecciona al alumno a evaluar:", st.session_state.alumnos_db['Alumno'].tolist())
-        idx = st.session_state.alumnos_db[st.session_state.alumnos_db['Alumno'] == alumno_seleccionado].index[0]
+        alumno_seleccionado = st.selectbox("👤 Selecciona al alumno a evaluar:", df_grupo['Alumno'].tolist())
+        idx = df_grupo[df_grupo['Alumno'] == alumno_seleccionado].index[0]
         
         col1, col2, col3 = st.columns(3)
         
         with col1:
             st.markdown("### 📝 Quizes y Proyectos (0-10)")
-            q1 = st.number_input("1er Quiz", 0.0, 10.0, float(st.session_state.alumnos_db.at[idx, '1er Quiz']), 0.1)
-            q2 = st.number_input("2do Quiz", 0.0, 10.0, float(st.session_state.alumnos_db.at[idx, '2do Quiz']), 0.1)
-            q3 = st.number_input("3er Quiz", 0.0, 10.0, float(st.session_state.alumnos_db.at[idx, '3er Quiz']), 0.1)
-            q4 = st.number_input("4to Quiz", 0.0, 10.0, float(st.session_state.alumnos_db.at[idx, '4to Quiz']), 0.1)
-            p1 = st.number_input("1er Proyecto Nota", 0.0, 10.0, float(st.session_state.alumnos_db.at[idx, '1er Proyecto']), 0.1)
+            q1 = st.number_input("1er Quiz", 0.0, 10.0, float(df_grupo.at[idx, '1er Quiz']), 0.1, key=f"q1_{idx}")
+            q2 = st.number_input("2do Quiz", 0.0, 10.0, float(df_grupo.at[idx, '2do Quiz']), 0.1, key=f"q2_{idx}")
+            q3 = st.number_input("3er Quiz", 0.0, 10.0, float(df_grupo.at[idx, '3er Quiz']), 0.1, key=f"q3_{idx}")
+            q4 = st.number_input("4to Quiz", 0.0, 10.0, float(df_grupo.at[idx, '4to Quiz']), 0.1, key=f"q4_{idx}")
+            p1 = st.number_input("Nota del Proyecto", 0.0, 10.0, float(df_grupo.at[idx, '1er Proyecto']), 0.1, key=f"p1_{idx}")
             
         with col2:
-            st.markdown("### 🗣️ Competencias del Idioma (0-10)")
-            c_oral = st.number_input("Comprensión Oral", 0.0, 10.0, float(st.session_state.alumnos_db.at[idx, 'Comprensión Oral']), 0.1)
-            c_esc = st.number_input("Comprensión Escrita", 0.0, 10.0, float(st.session_state.alumnos_db.at[idx, 'Comprensión Escrita']), 0.1)
-            p_oral = st.number_input("Producción Oral", 0.0, 10.0, float(st.session_state.alumnos_db.at[idx, 'Producción Oral']), 0.1)
-            p_esc = st.number_input("Producción Escrita", 0.0, 10.0, float(st.session_state.alumnos_db.at[idx, 'Producción Escrita']), 0.1)
+            st.markdown("### 🗣️ Competencias (0-10)")
+            c_oral = st.number_input("Comprensión Oral", 0.0, 10.0, float(df_grupo.at[idx, 'Comprensión Oral']), 0.1, key=f"co_{idx}")
+            c_esc = st.number_input("Comprensión Escrita", 0.0, 10.0, float(df_grupo.at[idx, 'Comprensión Escrita']), 0.1, key=f"ce_{idx}")
+            p_oral = st.number_input("Producción Oral", 0.0, 10.0, float(df_grupo.at[idx, 'Producción Oral']), 0.1, key=f"po_{idx}")
+            p_esc = st.number_input("Producción Escrita", 0.0, 10.0, float(df_grupo.at[idx, 'Producción Escrita']), 0.1, key=f"pe_{idx}")
             
         with col3:
-            st.markdown("### 📋 Formación y Asistencia (0-10)")
-            asist = st.number_input("Asistencia", 0.0, 10.0, float(st.session_state.alumnos_db.at[idx, 'Asistencia']), 0.1)
-            firmas = st.number_input("Firmas / Tareas", 0.0, 10.0, float(st.session_state.alumnos_db.at[idx, 'Firmas']), 0.1)
-            ser = st.number_input("Nota del SER", 0.0, 10.0, float(st.session_state.alumnos_db.at[idx, 'Ser']), 0.1)
+            st.markdown("### 📋 Formación Integral (0-10)")
+            asist = st.number_input("Asistencia", 0.0, 10.0, float(df_grupo.at[idx, 'Asistencia']), 0.1, key=f"as_{idx}")
+            firmas = st.number_input("Firmas / Tareas", 0.0, 10.0, float(df_grupo.at[idx, 'Firmas']), 0.1, key=f"fi_{idx}")
+            ser = st.number_input("Nota del SER", 0.0, 10.0, float(df_grupo.at[idx, 'Ser']), 0.1, key=f"se_{idx}")
             
         if st.button("💾 Guardar y Calcular Calificación", type="primary", use_container_width=True):
-            # Guardado en memoria de todos los rubros
-            st.session_state.alumnos_db.at[idx, '1er Quiz'] = q1
-            st.session_state.alumnos_db.at[idx, '2do Quiz'] = q2
-            st.session_state.alumnos_db.at[idx, '3er Quiz'] = q3
-            st.session_state.alumnos_db.at[idx, '4to Quiz'] = q4
-            st.session_state.alumnos_db.at[idx, '1er Proyecto'] = p1
-            st.session_state.alumnos_db.at[idx, 'Comprensión Oral'] = c_oral
-            st.session_state.alumnos_db.at[idx, 'Comprensión Escrita'] = c_esc
-            st.session_state.alumnos_db.at[idx, 'Producción Oral'] = p_oral
-            st.session_state.alumnos_db.at[idx, 'Producción Escrita'] = p_esc
-            st.session_state.alumnos_db.at[idx, 'Asistencia'] = asist
-            st.session_state.alumnos_db.at[idx, 'Firmas'] = firmas
-            st.session_state.alumnos_db.at[idx, 'Ser'] = ser
+            df_grupo.at[idx, '1er Quiz'] = q1
+            df_grupo.at[idx, '2do Quiz'] = q2
+            df_grupo.at[idx, '3er Quiz'] = q3
+            df_grupo.at[idx, '4to Quiz'] = q4
+            df_grupo.at[idx, '1er Proyecto'] = p1
+            df_grupo.at[idx, 'Comprensión Oral'] = c_oral
+            df_grupo.at[idx, 'Comprensión Escrita'] = c_esc
+            df_grupo.at[idx, 'Producción Oral'] = p_oral
+            df_grupo.at[idx, 'Producción Escrita'] = p_esc
+            df_grupo.at[idx, 'Asistencia'] = asist
+            df_grupo.at[idx, 'Firmas'] = firmas
+            df_grupo.at[idx, 'Ser'] = ser
             
-            # Promedios automáticos internos
             t_quiz = (q1 + q2 + q3 + q4) / 4
-            st.session_state.alumnos_db.at[idx, 'TOTAL QUIZ'] = round(t_quiz, 2)
-            st.session_state.alumnos_db.at[idx, 'TOTAL PROYECTO'] = p1
+            df_grupo.at[idx, 'TOTAL QUIZ'] = round(t_quiz, 2)
+            df_grupo.at[idx, 'TOTAL PROYECTO'] = p1
             
-            # Matemáticas con pesos dinámicos configurados
             cfg = st.session_state.config_evaluacion
-            nota_final = ((t_quiz * cfg['quiz']) + (p1 * cfg['proyecto']) + 
-                          (c_oral * cfg['comp_oral']) + (c_esc * cfg['comp_esc']) + 
-                          (p_oral * cfg['prod_oral']) + (p_esc * cfg['prod_esc']) + 
-                          (asist * cfg['asistencia']) + (firmas * cfg['firmas']) + (ser * cfg['ser']))
-                          
-            st.session_state.alumnos_db.at[idx, 'TOTAL FINAL'] = round(nota_final, 2)
-            st.success(f"¡Notas guardadas para {alumno_seleccionado}! Promedio final: {round(nota_final, 2)} / 10")
+            if cfg:
+                nota_final = ((t_quiz * cfg['quiz']) + (p1 * cfg['proyecto']) + 
+                              (c_oral * cfg['comp_oral']) + (c_esc * cfg['comp_esc']) + 
+                              (p_oral * cfg['prod_oral']) + (p_esc * cfg['prod_esc']) + 
+                              (asist * cfg['asistencia']) + (firmas * cfg['firmas']) + (ser * cfg['ser']))
+            else:
+                nota_final = (t_quiz + p1 + c_oral + c_esc + p_oral + p_esc + asist + firmas + ser) / 9
+                              
+            df_grupo.at[idx, 'TOTAL FINAL'] = round(nota_final, 2)
+            st.session_state.base_datos_grupos[grupo_seleccionado] = df_grupo
+            st.success(f"¡Guardado! {alumno_seleccionado} tiene un promedio final de: {round(nota_final, 2)} / 10")
 
     with tab_tabla:
-        st.header(f"📊 Concentrado General del Grupo {grupo_nombre}")
-        st.write(f"Cuatrimestre: {cuatrimestre}")
-        st.dataframe(st.session_state.alumnos_db, use_container_width=True, hide_index=True)
+        st.header(f"📊 Concentrado de Calificaciones - {grupo_seleccionado}")
+        st.dataframe(df_grupo, use_container_width=True, hide_index=True)
 
     with tab_reportes:
-        st.header("🖨️ Impresión de Reportes Oficiales en PDF")
+        st.header(f"🖨️ Imprimir Acta de Evaluación ({grupo_seleccionado})")
         
         def generar_pdf_grupo(df, g_name, cuatri):
             buffer = io.BytesIO()
@@ -178,10 +230,9 @@ if st.session_state.alumnos_db is not None:
             
             story.append(Paragraph(f"UNIVERSIDAD AERONÁUTICA EN QUERÉTARO", title_style))
             story.append(Spacer(1, 10))
-            story.append(Paragraph(f"REPORTE BIMESTRAL DE CALIFICACIONES - GRUPO: {g_name} | {cuatri}", meta_style))
+            story.append(Paragraph(f"ACTA DE EVALUACIÓN DE IDIOMAS - GRUPO: {g_name} | {cuatri}", meta_style))
             story.append(Spacer(1, 15))
             
-            # Tabla reducida y optimizada para la hoja impresa con los nuevos rubros
             data = [["Alumno", "Quiz", "Proy.", "C.Oral", "C.Esc", "P.Oral", "P.Esc", "Final"]]
             for _, row in df.iterrows():
                 data.append([
@@ -207,16 +258,12 @@ if st.session_state.alumnos_db is not None:
             buffer.seek(0)
             return buffer
 
-        pdf_data = generar_pdf_grupo(st.session_state.alumnos_db, grupo_nombre, cuatrimestre)
+        pdf_data = generar_pdf_grupo(df_grupo, grupo_seleccionado, cuatrimestre)
         
-        st.info("Haz clic en el botón inferior para generar el documento PDF final con el desglose completo de competencias por alumno.")
         st.download_button(
-            label="📥 DESCARGAR REPORTE COMPLETO EN PDF",
+            label=f"📥 DESCARGAR REPORTE DEL GRUPO {grupo_seleccionado} EN PDF",
             data=pdf_data,
-            file_name=f"Reporte_Completo_{grupo_nombre}.pdf",
+            file_name=f"Reporte_Idiomas_{grupo_seleccionado}.pdf",
             mime="application/pdf",
             use_container_width=True
         )
-else:
-    st.warning("⚠️ No hay datos cargados todavía.")
-    st.info("Usa el menú de la izquierda para configurar los porcentajes de evaluación y cargar el archivo Excel de este bimestre.")
