@@ -86,7 +86,6 @@ with st.sidebar:
         lista_de_grupos = list(st.session_state.base_datos_grupos.keys())
         grupo_seleccionado = st.selectbox("📂 Seleccione el Grupo para Trabajar:", lista_de_grupos)
         
-        # Validación de lectura segura para prevenir KeyErrors en cascada
         cfg = st.session_state.configuraciones_grupos.get(grupo_seleccionado, {
             'num_quizes': 4, 'n_quiz': 'Quizes', 'w_quiz': 30,
             'num_proyectos': 2, 'n_proyecto': 'Proyectos', 'w_proyecto': 30,
@@ -290,15 +289,23 @@ else:
             opciones_ev = [f"Quiz {q}" for q in range(1, cfg.get('num_quizes', 4) + 1)] + [f"Proyecto {p}" for p in range(1, cfg.get('num_proyectos', 2) + 1)]
             if opciones_ev:
                 ex_sel = st.selectbox("Selecciona la evaluación a parametrizar:", opciones_ev)
+                
+                # Inicialización defensiva para evitar KeyError de claves anteriores
                 if ex_sel not in st.session_state.examenes_programados:
                     st.session_state.examenes_programados[ex_sel] = {"claves": "1-F, 2-D, 3-B", "max_c": 6.0, "rubrica": "Criterios"}
                 
-                st.session_state.examenes_programados[ex_sel]["claves"] = st.text_area("Clave de respuestas cerradas:", st.session_state.examenes_programados[ex_sel]["claves"])
-                st.session_state.examenes_programados[ex_sel]["max_c"] = st.number_input("Puntaje máximo sección cerrada:", 0.0, 10.0, float(st.session_state.examenes_programados[ex_sel]["max_c"]))
-                st.session_state.examenes_programados[ex_sel]["rubrica"] = st.text_area("Descripción de Rúbrica Abierta:", st.session_state.examenes_programados[ex_sel]["rubrica"])
-                if st.button("💾 Guardar Configuración del Examen"):
+                # Uso del método seguro .get() para que nunca vuelva a tronar la app
+                txt_claves = st.session_state.examenes_programados[ex_sel].get("claves", "1-F, 2-D, 3-B")
+                val_max_c = float(st.session_state.examenes_programados[ex_sel].get("max_c", 6.0))
+                txt_rubrica = st.session_state.examenes_programados[ex_sel].get("rubrica", "Criterios")
+                
+                st.session_state.examenes_programados[ex_sel]["claves"] = st.text_area("Clave de respuestas cerradas:", txt_claves)
+                st.session_state.examenes_programados[ex_sel]["max_c"] = st.number_input("Puntaje máximo sección cerrada:", 0.0, 10.0, val_max_c)
+                st.session_state.examenes_programados[ex_sel]["rubrica"] = st.text_area("Descripción de Rúbrica Abierta:", txt_rubrica)
+                
+                if st.button("¼️ Guardar Configuración del Examen"):
                     guardar_datos_permanentes()
-                    st.success("Examen parametrizado.")
+                    st.success("✅ Examen parametrizado con éxito de forma segura.")
             else:
                 st.caption("No hay Quizes o Proyectos programados en la barra lateral.")
 
@@ -352,7 +359,7 @@ else:
                         st.rerun()
 
     with tab_reportes:
-        st.header("🖨️ Exportar Actas PDF")
+        st.subheader("🖨️ Exportar Actas PDF")
         def generar_pdf_grupo(df, g_name, cuatri, c):
             buffer = io.BytesIO()
             doc = SimpleDocTemplate(buffer, pagesize=letter)
