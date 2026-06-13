@@ -314,7 +314,6 @@ else:
             with col3:
                 if cfg['w_firmas'] > 0 or cfg['w_ser'] > 0:
                     st.markdown("### 📋 Firmas y Actitud")
-                    # CORRECCIÓN EN ESTE BLOQUE: Se agregó la caja para capturar las firmas del alumno
                     if cfg['w_firmas'] > 0:
                         st.markdown(f"**Total de firmas programadas: {cfg['num_firmas']}**")
                         val_fi_def = int(df_grupo.at[idx, 'Firmas Registradas']) if 'Firmas Registradas' in df_grupo.columns else int(cfg['num_firmas'])
@@ -365,14 +364,17 @@ else:
                 p_ser = (ser * (cfg['w_ser'] / 100)) if cfg['w_ser'] > 0 else 0.0
                 
                 nota_base_10 = p_quiz + p_proy + p_asist + p_firmas + p_ser
-                df_grupo.at[idx, 'NOTA BASE 10'] = round(nota_base_10, 2)
                 
+                # CORRECCIÓN SOLICITADA: Redondear de forma estricta la nota base 10 a 1 Sola Décima
+                df_grupo.at[idx, 'NOTA BASE 10'] = round(nota_base_10, 1)
+                
+                # El puntaje parcial al 30% mantiene sus 2 decimales por precisión institucional
                 puntaje_30 = nota_base_10 * 0.3
                 df_grupo.at[idx, 'PUNTAJE 30%'] = round(puntaje_30, 2)
                 
                 st.session_state.base_datos_grupos[grupo_seleccionado] = df_grupo
                 guardar_datos_permanentes()
-                st.success(f"💾 Guardado. Nota base 10: {round(nota_base_10,2)} | Puntaje Parcial Escalado al 30%: {round(puntaje_30, 2)} / 3.0")
+                st.success(f"💾 Guardado. Nota base 10: {round(nota_base_10,1)} | Puntaje Parcial Escalado al 30%: {round(puntaje_30, 2)} / 3.0")
                 st.rerun()
         else:
             st.warning("Este grupo no tiene alumnos registrados.")
