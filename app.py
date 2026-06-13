@@ -33,7 +33,6 @@ def cargar_datos_permanentes():
             with open(ARCHIVO_BD, "r", encoding="utf-8") as f:
                 datos_importados = json.load(f)
             
-            # Recuperar configuraciones salvadas
             saved_cfgs = datos_importados.get("configuraciones_grupos", {})
             
             # Validar y rellenar llaves faltantes en configuraciones antiguas
@@ -60,7 +59,6 @@ def cargar_datos_permanentes():
             for grupo, lista_filas in datos_importados.get("grupos", {}).items():
                 df = pd.DataFrame(lista_filas)
                 
-                # Asegurar de forma defensiva que existan las columnas base de control en la tabla
                 columnas_obligatorias = ['Alumno', 'TOTAL QUIZ', 'TOTAL PROYECTO', 'TOTAL FIRMAS', 'Asistencia', 'Ser', 'NOTA BASE 10', 'PUNTAJE 30%']
                 for col in columnas_obligatorias:
                     if col not in df.columns:
@@ -91,7 +89,6 @@ with st.sidebar:
         lista_de_grupos = list(st.session_state.base_datos_grupos.keys())
         grupo_seleccionado = st.selectbox("📂 Seleccione el Grupo para Trabajar:", lista_de_grupos)
         
-        # Inicializar configuración adaptativa extendida por grupo si es completamente nuevo
         if grupo_seleccionado not in st.session_state.configuraciones_grupos:
             st.session_state.configuraciones_grupos[grupo_seleccionado] = {
                 'num_quizes': 4, 'n_quiz': 'Quizes', 'w_quiz': 30,
@@ -104,11 +101,9 @@ with st.sidebar:
         cfg = st.session_state.configuraciones_grupos[grupo_seleccionado]
         
         st.write("---")
-        # CONFIGURADOR INTERACTIVO DETALLADO DE CANTIDADES Y PESOS
         with st.expander(f"⚙️ Programar Estructura de: {grupo_seleccionado}"):
             st.caption("Asigna 0% para desactivar un rasgo completo del plan de evaluación.")
             
-            # 1. Configuración de Quizes
             col_n1, col_p1 = st.columns([2, 1])
             with col_n1: cfg['n_quiz'] = st.text_input("Nombre Rubro 1:", cfg['n_quiz'])
             with col_p1: cfg['w_quiz'] = st.number_input("% Quiz", 0, 100, int(cfg['w_quiz']), key="wq")
@@ -118,7 +113,6 @@ with st.sidebar:
                 cfg['num_quizes'] = 0
                 
             st.markdown("---")
-            # 2. Configuración de Proyectos
             col_n2, col_p2 = st.columns([2, 1])
             with col_n2: cfg['n_proyecto'] = st.text_input("Nombre Rubro 2:", cfg['n_proyecto'])
             with col_p2: cfg['w_proyecto'] = st.number_input("% Proy", 0, 100, int(cfg['w_proyecto']), key="wp")
@@ -128,7 +122,6 @@ with st.sidebar:
                 cfg['num_proyectos'] = 0
                 
             st.markdown("---")
-            # 3. Configuración de Asistencia por días
             col_n3, col_p3 = st.columns([2, 1])
             with col_n3: cfg['n_asistencia'] = st.text_input("Nombre Rubro 3:", cfg['n_asistencia'])
             with col_p3: cfg['w_asistencia'] = st.number_input("% Asist", 0, 100, int(cfg['w_asistencia']), key="wa")
@@ -136,7 +129,6 @@ with st.sidebar:
                 cfg['dias_asistencia'] = st.number_input("Días totales de clase:", 1, 100, int(cfg['dias_asistencia']), key="da")
                 
             st.markdown("---")
-            # 4. Configuración de Firmas / Tareas
             col_n4, col_p4 = st.columns([2, 1])
             with col_n4: cfg['n_firmas'] = st.text_input("Nombre Rubro 4:", cfg['n_firmas'])
             with col_p4: cfg['w_firmas'] = st.number_input("% Firmas", 0, 100, int(cfg['w_firmas']), key="wf")
@@ -146,7 +138,6 @@ with st.sidebar:
                 cfg['num_firmas'] = 0
                 
             st.markdown("---")
-            # 5. Configuración de Ser
             col_n5, col_p5 = st.columns([2, 1])
             with col_n5: cfg['n_ser'] = st.text_input("Nombre Rubro 5:", cfg['n_ser'])
             with col_p5: cfg['w_ser'] = st.number_input("% SER", 0, 100, int(cfg['w_ser']), key="ws")
@@ -160,7 +151,6 @@ with st.sidebar:
                 st.success("✅ Distribución válida al 100%.")
                 st.session_state.configuraciones_grupos[grupo_seleccionado] = cfg
                 
-                # Sincronización e inyección dinámica de columnas en la estructura del DataFrame
                 df_actual = st.session_state.base_datos_grupos[grupo_seleccionado]
                 if cfg['num_quizes'] > 0:
                     for q in range(1, cfg['num_quizes'] + 1):
@@ -445,43 +435,79 @@ else:
             st.download_button(label=f"📥 DESCARGAR REPORTE AL 30% EN PDF", data=pdf_data, file_name=f"Acta_30_{grupo_seleccionado}.pdf", mime="application/pdf", use_container_width=True)
 
     with tab_admin:
-        st.header(f"🛠️ Panel de Control - Administrando: {grupo_seleccionado}")
+        st.header("🛠️ Panel de Control - Administrar Salón y Listas")
         
-        # NUEVA FUNCIÓN: REGISTRO MANUAL DE ALUMNOS NUEVOS
-        st.subheader("➕ 1. Registrar Nuevo Alumno Manualmente")
-        st.caption("Añade un alumno nuevo que no estaba en el archivo JSON original de la UNAQ.")
-        nombre_nuevo_alumno = st.text_input("Escriba los apellidos y nombres completos:", key=f"add_manual_al_{grupo_seleccionado}")
+        # AGREGAR MÁS GRUPOS MANUALMENTE
+        st.subheader("📂 1. Crear Nuevo Grupo Manualmente")
+        st.caption("Escribe el identificador de la nueva clase si el PDF de la UNAQ no lo detectó de origen.")
+        nombre_grupo_nuevo = st.text_input("Nombre del Nuevo Grupo (Ej: IDMA A1.4):", key="txt_add_manual_g").strip().upper()
         
-        if st.button("➕ Añadir Alumno a este Grupo", key=f"btn_add_manual_{grupo_seleccionado}"):
+        if st.button("💾 Crear Grupo Vacío", key="btn_add_manual_g"):
+            if nombre_grupo_nuevo == "":
+                st.error("⚠️ Especifica un identificador de grupo no vacío.")
+            elif nombre_grupo_nuevo in st.session_state.base_datos_grupos:
+                st.warning("⚠️ Este grupo ya existe en la base de datos.")
+            else:
+                # Estructura inicial limpia y vacía
+                df_nuevo_g = pd.DataFrame(columns=['Alumno', 'TOTAL QUIZ', 'TOTAL PROYECTO', 'TOTAL FIRMAS', 'Asistencia', 'Ser', 'NOTA BASE 10', 'PUNTAJE 30%'])
+                st.session_state.base_datos_grupos[nombre_grupo_nuevo] = df_nuevo_g
+                
+                # Asignar configuración por defecto para el grupo creado
+                st.session_state.configuraciones_grupos[nombre_grupo_nuevo] = {
+                    'num_quizes': 4, 'n_quiz': 'Quizes', 'w_quiz': 30,
+                    'num_proyectos': 2, 'n_proyecto': 'Proyectos', 'w_proyecto': 30,
+                    'dias_asistencia': 32, 'n_asistencia': 'Asistencia', 'w_asistencia': 15,
+                    'num_firmas': 15, 'n_firmas': 'Firmas / Tareas', 'w_firmas': 15,
+                    'n_ser': 'SER / Actitud', 'w_ser': 10
+                }
+                guardar_datos_permanentes()
+                st.success(f"🎉 ¡El grupo {nombre_grupo_nuevo} fue creado! Ya puedes seleccionarlo a la izquierda.")
+                st.rerun()
+        
+        st.write("---")
+        # REGISTRO MANUAL DE ALUMNOS NUEVOS
+        st.subheader(f"➕ 2. Registrar Alumno en el Grupo {grupo_seleccionado}")
+        nombre_nuevo_alumno = st.text_input("Escriba los apellidos y nombres completos del nuevo estudiante:", key=f"add_manual_al_{grupo_seleccionado}")
+        
+        if st.button("➕ Añadir Alumno", key=f"btn_add_manual_{grupo_seleccionado}"):
             nombre_limpio = nombre_nuevo_alumno.strip().upper()
             if nombre_limpio == "":
                 st.error("⚠️ Por favor escribe un nombre válido antes de guardar.")
-            elif nombre_limpio in df_grupo['Alumno'].tolist():
-                st.warning("⚠️ Este alumno ya se encuentra registrado en este grupo.")
+            elif not df_grupo.empty and nombre_limpio in df_grupo['Alumno'].tolist():
+                st.warning("⚠️ Este alumno ya se encuentra registrado.")
             else:
-                # Construir diccionario adaptivo basado en las columnas reales del DataFrame actual
                 nueva_fila = {}
                 for col in df_grupo.columns:
-                    if col == 'Alumno':
-                        nueva_fila[col] = nombre_limpio
-                    elif 'Días Asistidos' in col:
-                        nueva_fila[col] = int(cfg.get('dias_asistencia', 32))
-                    elif 'Firmas Registradas' in col:
-                        nueva_fila[col] = int(cfg.get('num_firmas', 15))
-                    elif col in ['Asistencia', 'TOTAL FIRMAS']:
-                        nueva_fila[col] = 10.0
-                    else:
-                        nueva_fila[col] = 0.0
+                    if col == 'Alumno': nueva_fila[col] = nombre_limpio
+                    elif 'Días Asistidos' in col: nueva_fila[col] = int(cfg.get('dias_asistencia', 32))
+                    elif 'Firmas Registradas' in col: nueva_fila[col] = int(cfg.get('num_firmas', 15))
+                    elif col in ['Asistencia', 'TOTAL FIRMAS']: nueva_fila[col] = 10.0
+                    else: nueva_fila[col] = 0.0
                 
-                # Insertar, ordenar alfabéticamente y persistir cambios
                 df_nuevo_registro = pd.DataFrame([nueva_fila])
                 st.session_state.base_datos_grupos[grupo_seleccionado] = pd.concat([df_grupo, df_nuevo_registro]).sort_values(by="Alumno").reset_index(drop=True)
                 guardar_datos_permanentes()
-                st.success(f"🎉 ¡{nombre_limpio} fue agregado con éxito al grupo!")
+                st.success(f"🎉 ¡{nombre_limpio} fue agregado con éxito!")
                 st.rerun()
 
         st.write("---")
-        st.subheader("✏️ 2. Cambiar Nombre a este Grupo")
+        # ELIMINAR ALUMNOS DEFINITIVAMENTE (Nueva Característica Solicitada)
+        st.subheader(f"🗑️ 3. Eliminar Alumno Definitivamente de {grupo_seleccionado}")
+        st.caption("Baja permanente del estudiante. Esta acción borrará todas sus calificaciones asociadas.")
+        
+        if not df_grupo.empty:
+            alumno_a_eliminar = st.selectbox("Selecciona al alumno que deseas dar de baja:", df_grupo['Alumno'].tolist(), key=f"sel_del_al_{grupo_seleccionado}")
+            
+            if st.button("🗑️ Confirmar Baja Definitiva", key=f"btn_del_al_{grupo_seleccionado}", type="primary"):
+                st.session_state.base_datos_grupos[grupo_seleccionado] = df_grupo[df_grupo['Alumno'] != alumno_a_eliminar].reset_index(drop=True)
+                guardar_datos_permanentes()
+                st.success(f"💥 {alumno_a_eliminar} ha sido eliminado del grupo permanentemente.")
+                st.rerun()
+        else:
+            st.caption("No hay alumnos registrados en este grupo para eliminar.")
+
+        st.write("---")
+        st.subheader("✏️ 4. Cambiar Nombre a este Grupo")
         nuevo_nombre_grupo = st.text_input("Escriba el nuevo nombre:", grupo_seleccionado, key=f"txt_gname_{grupo_seleccionado}")
         if st.button("💾 Guardar Nuevo Nombre del Grupo", key=f"btn_gname_{grupo_seleccionado}"):
             nuevo_nombre_grupo = nuevo_nombre_grupo.strip().upper()
@@ -494,7 +520,7 @@ else:
                 st.rerun()
 
         st.write("---")
-        st.subheader("👤 3. Corregir Nombre de un Alumno de este Grupo")
+        st.subheader("👤 5. Corregir Nombre de un Alumno de este Grupo")
         if not df_grupo.empty:
             alumno_a_editar = st.selectbox("Seleccione al alumno con error:", df_grupo['Alumno'].tolist(), key=f"sel_ed_al_{grupo_seleccionado}")
             nuevo_nombre_alumno = st.text_input("Corrija el nombre:", alumno_a_editar, key=f"txt_ed_al_{grupo_seleccionado}").strip().upper()
@@ -508,7 +534,7 @@ else:
                     st.rerun()
 
         st.write("---")
-        st.subheader("🏃 4. Mover Alumno de este Grupo a Otro Salón")
+        st.subheader("🏃 6. Mover Alumno de este Grupo a Otro Salón")
         if not df_grupo.empty:
             alumno_a_mover = st.selectbox("Seleccione al alumno a transferir:", df_grupo['Alumno'].tolist(), key=f"mover_al_{grupo_seleccionado}")
             lista_destinos = [g for g in list(st.session_state.base_datos_grupos.keys()) if g != grupo_seleccionado]
