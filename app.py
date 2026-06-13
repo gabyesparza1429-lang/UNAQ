@@ -9,8 +9,8 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
-# Configuración inicial de la página web
-st.set_page_config(page_title="GEM UNAQ - Control de Notas adaptativo", layout="wide")
+# Configuración inicial de la interfaz web
+st.set_page_config(page_title="GEM UNAQ - Control de Notas Adaptativo", layout="wide")
 
 # Nombre del archivo persistente en disco para la memoria permanente
 ARCHIVO_BD = "base_datos_alumnos.json"
@@ -27,7 +27,7 @@ def guardar_datos_permanentes():
         json.dump(datos_exportar, f, ensure_ascii=False, indent=4)
 
 def cargar_datos_permanentes():
-    """Recupera los datos estructurados aplicando un validador corrector de columnas."""
+    """Recupera los datos estructurados aplicando un validador corrector de columnas dinámicas."""
     if os.path.exists(ARCHIVO_BD):
         try:
             with open(ARCHIVO_BD, "r", encoding="utf-8") as f:
@@ -39,8 +39,8 @@ def cargar_datos_permanentes():
             for grupo, lista_filas in datos_importados.get("grupos", {}).items():
                 df = pd.DataFrame(lista_filas)
                 
-                # Asegurar de forma defensiva que existan todas las columnas base para evitar fallos
-                columnas_obligatorias = ['Alumno', 'TOTAL QUIZ', 'Proyecto', 'Asistencia', 'Firmas', 'Ser', 'NOTA BASE 10', 'PUNTAJE 30%']
+                # Asegurar de forma defensiva que existan las columnas base de control
+                columnas_obligatorias = ['Alumno', 'TOTAL QUIZ', 'TOTAL PROYECTO', 'TOTAL FIRMAS', 'Asistencia', 'Ser', 'NOTA BASE 10', 'PUNTAJE 30%']
                 for col in columnas_obligatorias:
                     if col not in df.columns:
                         df[col] = 0.0 if col != 'Alumno' else ''
@@ -58,10 +58,10 @@ if 'base_datos_grupos' not in st.session_state:
     st.session_state.base_datos_grupos = cargar_datos_permanentes()
 
 st.title("✈️ Generador de Interfaces GEM - UNAQ")
-st.write("Configuración adaptativa de Evaluación Continua (30% Global del Cuatrimestre) con rasgos opcionales.")
+st.write("Configuración adaptativa de Evaluación Continua (30% Global) con asignación de cantidades por rasgo.")
 st.write("---")
 
-# BARRA LATERAL: Control de Entorno y Variables de Curso
+# BARRA LATERAL: Parámetros de Configuración por Grupo
 with st.sidebar:
     st.header("📋 Datos del Curso")
     cuatrimestre = st.text_input("Cuatrimestre actual:", "MAYO-AGOSTO 2026")
@@ -70,70 +70,88 @@ with st.sidebar:
         lista_de_grupos = list(st.session_state.base_datos_grupos.keys())
         grupo_seleccionado = st.selectbox("📂 Seleccione el Grupo para Trabajar:", lista_de_grupos)
         
-        # Inicializar configuración adaptativa por defecto si no existía
+        # Inicializar configuración adaptativa extendida por grupo
         if grupo_seleccionado not in st.session_state.configuraciones_grupos:
             st.session_state.configuraciones_grupos[grupo_seleccionado] = {
-                'num_quizes': 4, 'n_quiz': 'Quizes', 'w_quiz': 40,
-                'n_proyecto': 'Proyecto', 'w_proyecto': 30,
-                'n_asistencia': 'Asistencia', 'w_asistencia': 10,
-                'n_firmas': 'Firmas / Tareas', 'w_firmas': 10,
+                'num_quizes': 4, 'n_quiz': 'Quizes', 'w_quiz': 30,
+                'num_proyectos': 2, 'n_proyecto': 'Proyectos', 'w_proyecto': 30,
+                'dias_asistencia': 32, 'n_asistencia': 'Asistencia', 'w_asistencia': 15,
+                'num_firmas': 15, 'n_firmas': 'Firmas / Tareas', 'w_firmas': 15,
                 'n_ser': 'SER / Actitud', 'w_ser': 10
             }
             
         cfg = st.session_state.configuraciones_grupos[grupo_seleccionado]
         
         st.write("---")
-        # CONFIGURADOR INTERACTIVO DE RUBROS Y PORCENTAJES
-        with st.expander(f"⚙️ Programar Rubros de: {grupo_seleccionado}"):
-            st.caption("💡 **Tip:** Si no quieres evaluar un rubro, asígnale **0%** para desactivarlo.")
+        # CONFIGURADOR INTERACTIVO DETALLADO DE CANTIDADES Y PESOS
+        with st.expander(f"⚙️ Programar Estructura de: {grupo_seleccionado}"):
+            st.caption("Asigna 0% para desactivar un rasgo completo del plan de evaluación.")
             
-            # Control interactivo de Quizes
+            # 1. Configuración de Quizes
             col_n1, col_p1 = st.columns([2, 1])
             with col_n1: cfg['n_quiz'] = st.text_input("Nombre Rubro 1:", cfg['n_quiz'])
-            with col_p1: cfg['w_quiz'] = st.number_input("% Peso", 0, 100, int(cfg['w_quiz']), key="wq")
-            
+            with col_p1: cfg['w_quiz'] = st.number_input("% Quiz", 0, 100, int(cfg['w_quiz']), key="wq")
             if cfg['w_quiz'] > 0:
-                cfg['num_quizes'] = st.number_input("¿Cuántos Quizes evaluarás?", min_value=1, max_value=10, value=int(cfg['num_quizes']))
+                cfg['num_quizes'] = st.number_input("¿Cuántos Quizes?", 1, 10, int(cfg['num_quizes']), key="nq")
             else:
                 cfg['num_quizes'] = 0
-            
+                
             st.markdown("---")
-            # Control interactivo de Proyecto
+            # 2. Configuración de Proyectos (Nueva característica)
             col_n2, col_p2 = st.columns([2, 1])
             with col_n2: cfg['n_proyecto'] = st.text_input("Nombre Rubro 2:", cfg['n_proyecto'])
-            with col_p2: cfg['w_proyecto'] = st.number_input("% Peso", 0, 100, int(cfg['w_proyecto']), key="wp")
-            
-            # Control interactivo de Asistencia
+            with col_p2: cfg['w_proyecto'] = st.number_input("% Proy", 0, 100, int(cfg['w_proyecto']), key="wp")
+            if cfg['w_proyecto'] > 0:
+                cfg['num_proyectos'] = st.number_input("¿Cuántos Proyectos?", 1, 10, int(cfg['num_proyectos']), key="np")
+            else:
+                cfg['num_proyectos'] = 0
+                
+            st.markdown("---")
+            # 3. Configuración de Asistencia por días (Nueva característica)
             col_n3, col_p3 = st.columns([2, 1])
             with col_n3: cfg['n_asistencia'] = st.text_input("Nombre Rubro 3:", cfg['n_asistencia'])
-            with col_p3: cfg['w_asistencia'] = st.number_input("% Peso", 0, 100, int(cfg['w_asistencia']), key="wa")
-            
-            # Control interactivo de Firmas
+            with col_p3: cfg['w_asistencia'] = st.number_input("% Asist", 0, 100, int(cfg['w_asistencia']), key="wa")
+            if cfg['w_asistencia'] > 0:
+                cfg['dias_asistencia'] = st.number_input("Días totales de clase:", 1, 100, int(cfg['dias_asistencia']), key="da")
+                
+            st.markdown("---")
+            # 4. Configuración de Firmas / Tareas (Nueva característica)
             col_n4, col_p4 = st.columns([2, 1])
             with col_n4: cfg['n_firmas'] = st.text_input("Nombre Rubro 4:", cfg['n_firmas'])
-            with col_p4: cfg['w_firmas'] = st.number_input("% Peso", 0, 100, int(cfg['w_firmas']), key="wf")
-            
-            # Control interactivo de Ser
+            with col_p4: cfg['w_firmas'] = st.number_input("% Firmas", 0, 100, int(cfg['w_firmas']), key="wf")
+            if cfg['w_firmas'] > 0:
+                cfg['num_firmas'] = st.number_input("Número total de firmas:", 1, 100, int(cfg['num_firmas']), key="nf")
+            else:
+                cfg['num_firmas'] = 0
+                
+            st.markdown("---")
+            # 5. Configuración de Ser
             col_n5, col_p5 = st.columns([2, 1])
             with col_n5: cfg['n_ser'] = st.text_input("Nombre Rubro 5:", cfg['n_ser'])
-            with col_p5: cfg['w_ser'] = st.number_input("% Peso", 0, 100, int(cfg['w_ser']), key="ws")
+            with col_p5: cfg['w_ser'] = st.number_input("% SER", 0, 100, int(cfg['w_ser']), key="ws")
             
             st.markdown("---")
             suma_total = cfg['w_quiz'] + cfg['w_proyecto'] + cfg['w_asistencia'] + cfg['w_firmas'] + cfg['w_ser']
             
             if suma_total != 100:
-                st.error(f"⚠️ La suma actual es de {suma_total}%. Ajuste los valores para que sumen 100% exacto.")
+                st.error(f"⚠️ La suma actual es {suma_total}%. Ajuste para que sume 100% exacto.")
             else:
-                st.success("✅ Distribución válida al 100%. Equivale al 30% total.")
+                st.success("✅ Distribución válida al 100%.")
                 st.session_state.configuraciones_grupos[grupo_seleccionado] = cfg
                 
-                # Inyectar las columnas dinámicas de quizes si se necesitan
+                # Sincronización e inyección dinámica de columnas en la estructura del DataFrame
                 df_actual = st.session_state.base_datos_grupos[grupo_seleccionado]
                 if cfg['num_quizes'] > 0:
-                    for q_idx in range(1, cfg['num_quizes'] + 1):
-                        col_q = f"Quiz {q_idx}"
-                        if col_q not in df_actual.columns:
-                            df_actual[col_q] = 0.0
+                    for q in range(1, cfg['num_quizes'] + 1):
+                        if f"Quiz {q}" not in df_actual.columns: df_actual[f"Quiz {q}"] = 0.0
+                if cfg['num_proyectos'] > 0:
+                    for p in range(1, cfg['num_proyectos'] + 1):
+                        if f"Proyecto {p}" not in df_actual.columns: df_actual[f"Proyecto {p}"] = 0.0
+                if cfg['num_firmas'] > 0:
+                    if "Firmas Registradas" not in df_actual.columns: df_actual["Firmas Registradas"] = 0
+                if cfg['w_asistencia'] > 0:
+                    if "Días Asistidos" not in df_actual.columns: df_actual["Días Asistidos"] = int(cfg['dias_asistencia'])
+                
                 st.session_state.base_datos_grupos[grupo_seleccionado] = df_actual
                 guardar_datos_permanentes()
         
@@ -145,7 +163,7 @@ with st.sidebar:
                 os.remove(ARCHIVO_BD)
             st.rerun()
 
-# VISTA DE CARGA INICIAL
+# VISTA DE CARGA INICIAL DESDE TEXTO COPIADO
 if not st.session_state.base_datos_grupos:
     st.header("📂 Carga Inicial de Listas (Detección Multigrupo)")
     st.info("💡 **Instrucciones:** Copia el texto completo de tus PDFs de asistencia de la UNAQ y pégalo aquí abajo.")
@@ -199,12 +217,15 @@ if not st.session_state.base_datos_grupos:
                 lista_final_alumnos = sorted(list(set(lista_alumnos)))
                 if lista_final_alumnos and grupo != "GRUPO NO ESPECIFICADO":
                     df_init = pd.DataFrame({'Alumno': lista_final_alumnos})
-                    for q in range(1, 5):
-                        df_init[f"Quiz {q}"] = 0.0
+                    # Columnas iniciales por defecto
+                    for q in range(1, 5): df_init[f"Quiz {q}"] = 0.0
+                    for p in range(1, 3): df_init[f"Proyecto {p}"] = 0.0
                     df_init['TOTAL QUIZ'] = 0.0
-                    df_init['Proyecto'] = 0.0
-                    df_init['Asistencia'] = 0.0
-                    df_init['Firmas'] = 0.0
+                    df_init['TOTAL PROYECTO'] = 0.0
+                    df_init['Días Asistidos'] = 32
+                    df_init['Asistencia'] = 10.0
+                    df_init['Firmas Registradas'] = 15
+                    df_init['TOTAL FIRMAS'] = 10.0
                     df_init['Ser'] = 0.0
                     df_init['NOTA BASE 10'] = 0.0
                     df_init['PUNTAJE 30%'] = 0.0
@@ -212,10 +233,10 @@ if not st.session_state.base_datos_grupos:
             
             if st.session_state.base_datos_grupos:
                 guardar_datos_permanentes()
-                st.success("🎉 ¡Grupos e interfaz creados con éxito!")
+                st.success("🎉 ¡Grupos estructurados con éxito!")
                 st.rerun()
 
-# INTERFAZ DINÁMICA DE TRABAJO
+# INTERFAZ DINÁMICA DE TRABAJO DIARIO
 else:
     df_grupo = st.session_state.base_datos_grupos[grupo_seleccionado]
     cfg = st.session_state.configuraciones_grupos[grupo_seleccionado]
@@ -226,32 +247,36 @@ else:
     
     with tab_tabla:
         st.header(f"📊 Concentrado General - {grupo_seleccionado}")
-        st.caption(f"Cuatrimestre: {cuatrimestre} | Puntuación Directa escalada al 30% Máximo.")
+        st.caption(f"Cuatrimestre: {cuatrimestre} | Equivalente al 30% de la Calificación del Cuatrimestre")
         
-        # Filtrar de forma dinámica las columnas de los rubros que sí están activos (>0%)
+        # Filtrar dinámicamente qué columnas se muestran según la configuración del grupo
         cols_mostrar = ['Alumno']
         if cfg['w_quiz'] > 0:
-            for q_idx in range(1, cfg['num_quizes'] + 1):
-                cols_mostrar.append(f"Quiz {q_idx}")
+            for q in range(1, cfg['num_quizes'] + 1): cols_mostrar.append(f"Quiz {q}")
             cols_mostrar.append('TOTAL QUIZ')
-            
-        if cfg['w_proyecto'] > 0: cols_mostrar.append('Proyecto')
-        if cfg['w_asistencia'] > 0: cols_mostrar.append('Asistencia')
-        if cfg['w_firmas'] > 0: cols_mostrar.append('Firmas')
-        if cfg['w_ser'] > 0: cols_mostrar.append('Ser')
+        if cfg['w_proyecto'] > 0:
+            for p in range(1, cfg['num_proyectos'] + 1): cols_mostrar.append(f"Proyecto {p}")
+            cols_mostrar.append('TOTAL PROYECTO')
+        if cfg['w_asistencia'] > 0:
+            cols_mostrar.extend(['Días Asistidos', 'Asistencia'])
+        if cfg['w_firmas'] > 0:
+            cols_mostrar.extend(['Firmas Registradas', 'TOTAL FIRMAS'])
+        if cfg['w_ser'] > 0:
+            cols_mostrar.append('Ser')
         cols_mostrar.extend(['NOTA BASE 10', 'PUNTAJE 30%'])
         
         cols_finales = [c for c in cols_mostrar if c in df_grupo.columns]
         st.dataframe(df_grupo[cols_finales], use_container_width=True, hide_index=True)
 
     with tab_captura:
-        st.subheader(f"✍️ Captura de Notas - Grupo: {grupo_seleccionado}")
+        st.subheader(f"✍️ Captura de Notas - Grupo Actual: {grupo_seleccionado}")
         if not df_grupo.empty:
             alumno_seleccionado = st.selectbox("👤 Selecciona al alumno:", df_grupo['Alumno'].tolist(), key=f"sel_al_{grupo_seleccionado}")
             idx = df_grupo[df_grupo['Alumno'] == alumno_seleccionado].index[0]
             
             col1, col2, col3 = st.columns(3)
             
+            # Columna 1: Captura dinámica de Quizes
             valores_quizes = []
             with col1:
                 if cfg['w_quiz'] > 0:
@@ -262,65 +287,92 @@ else:
                         v_q = st.number_input(f"{col_q_name} (0-10)", 0.0, 10.0, val_def, 0.1, key=f"inp_q{q_idx}_{idx}")
                         valores_quizes.append((col_q_name, v_q))
                 else:
-                    st.caption("Rubro de Quizes desactivado.")
+                    st.caption("Quizes desactivados.")
                 
-            p1 = 0.0
-            asist = 0.0
+            # Columna 2: Captura dinámica de Proyectos y días de Asistencia
+            valores_proyectos = []
+            dias_del_alumno = 0
             with col2:
                 if cfg['w_proyecto'] > 0 or cfg['w_asistencia'] > 0:
-                    st.markdown("### 🏗️ Entregables")
+                    st.markdown("### 🏗️ Entregables y Asistencias")
                     if cfg['w_proyecto'] > 0:
-                        val_proj = float(df_grupo.at[idx, 'Proyecto']) if 'Proyecto' in df_grupo.columns else 0.0
-                        p1 = st.number_input(f"{cfg['n_proyecto']} ({cfg['w_proyecto']}%)", 0.0, 10.0, val_proj, 0.1, key=f"p1_{idx}")
+                        for p_idx in range(1, cfg['num_proyectos'] + 1):
+                            col_p_name = f"Proyecto {p_idx}"
+                            val_def = float(df_grupo.at[idx, col_p_name]) if col_p_name in df_grupo.columns else 0.0
+                            v_p = st.number_input(f"{col_p_name} (0-10)", 0.0, 10.0, val_def, 0.1, key=f"inp_p{p_idx}_{idx}")
+                            valores_proyectos.append((col_p_name, v_p))
                     if cfg['w_asistencia'] > 0:
-                        val_asist = float(df_grupo.at[idx, 'Asistencia']) if 'Asistencia' in df_grupo.columns else 0.0
-                        asist = st.number_input(f"{cfg['n_asistencia']} ({cfg['w_asistencia']}%)", 0.0, 10.0, val_asist, 0.1, key=f"as_{idx}")
+                        st.markdown(f"**Días totales del cuatrimestre: {cfg['dias_asistencia']}**")
+                        val_as_def = int(df_grupo.at[idx, 'Días Asistidos']) if 'Días Asistidos' in df_grupo.columns else int(cfg['dias_asistencia'])
+                        dias_del_alumno = st.number_input("Días que asistió el alumno:", 0, int(cfg['dias_asistencia']), val_as_def, 1, key=f"as_{idx}")
                 else:
-                    st.caption("Entregables desactivados.")
+                    st.caption("Entregables y asistencias desactivados.")
                         
-            firmas = 0.0
+            # Columna 3: Captura dinámica de Firmas y Rasgo SER
+            firmas_alumno = 0
             ser = 0.0
             with col3:
                 if cfg['w_firmas'] > 0 or cfg['w_ser'] > 0:
-                    st.markdown("### 📋 Formación")
+                    st.markdown("### 📋 Firmas y Actitud")
                     if cfg['w_firmas'] > 0:
-                        val_firmas = float(df_grupo.at[idx, 'Firmas']) if 'Firmas' in df_grupo.columns else 0.0
-                        firmas = st.number_input(f"{cfg['n_firmas']} ({cfg['w_firmas']}%)", 0.0, 10.0, val_firmas, 0.1, key=f"fi_{idx}")
+                        st.markdown(f"**Total de firmas programadas: {cfg['num_firmas']}**")
+                        val_fi_def = int(df_grupo.at[idx, 'Firmas Registradas']) if 'Firmas Registradas' in df_grupo.columns else int(cfg['num_firmas'])
+                        firmas_alumno = st.number_input("Firmas obtenidas por el alumno:", 0, int(cfg['num_firmas']), val_fi_def, 1, key=f"fi_{idx}")
                     if cfg['w_ser'] > 0:
                         val_ser = float(df_grupo.at[idx, 'Ser']) if 'Ser' in df_grupo.columns else 0.0
-                        ser = st.number_input(f"{cfg['n_ser']} ({cfg['w_ser']}%)", 0.0, 10.0, val_ser, 0.1, key=f"se_{idx}")
+                        ser = st.number_input(f"Nota de {cfg['n_ser']} (0-10)", 0.0, 10.0, val_ser, 0.1, key=f"se_{idx}")
                 else:
-                    st.caption("Formación de rasgos desactivada.")
+                    st.caption("Firmas y rasgos de actitud desactivados.")
                         
             if st.button("💾 Guardar y Calcular Proporción Parcial", type="primary", use_container_width=True):
-                # 1. Procesar Quizes si están activos
+                # 1. Procesar Quizes
                 t_quiz = 0.0
                 if cfg['w_quiz'] > 0 and valores_quizes:
                     suma_quizes = 0.0
                     for col_q, val_q in valores_quizes:
                         df_grupo.at[idx, col_q] = val_q
                         suma_quizes += val_q
-                    t_quiz = (suma_quizes / cfg['num_quizes']) if cfg['num_quizes'] > 0 else 0.0
+                    t_quiz = suma_quizes / cfg['num_quizes']
                     df_grupo.at[idx, 'TOTAL QUIZ'] = round(t_quiz, 2)
                 
-                # 2. Guardar asignaciones directas en la tabla
-                if cfg['w_proyecto'] > 0: df_grupo.at[idx, 'Proyecto'] = p1
-                if cfg['w_asistencia'] > 0: df_grupo.at[idx, 'Asistencia'] = asist
-                if cfg['w_firmas'] > 0: df_grupo.at[idx, 'Firmas'] = firmas
+                # 2. Procesar Proyectos
+                t_proyecto = 0.0
+                if cfg['w_proyecto'] > 0 and valores_proyectos:
+                    suma_proy = 0.0
+                    for col_p, val_p in valores_proyectos:
+                        df_grupo.at[idx, col_p] = val_p
+                        suma_proy += val_p
+                    t_proyecto = suma_proy / cfg['num_proyectos']
+                    df_grupo.at[idx, 'TOTAL PROYECTO'] = round(t_proyecto, 2)
+                
+                # 3. Calcular Asistencia por regla de tres basada en los días totales del cuatrimestre
+                nota_asistencia = 0.0
+                if cfg['w_asistencia'] > 0:
+                    df_grupo.at[idx, 'Días Asistidos'] = dias_del_alumno
+                    nota_asistencia = (dias_del_alumno / cfg['dias_asistencia']) * 10.0
+                    df_grupo.at[idx, 'Asistencia'] = round(nota_asistencia, 2)
+                
+                # 4. Calcular Firmas por regla de tres basada en el número máximo de firmas
+                nota_firmas = 0.0
+                if cfg['w_firmas'] > 0:
+                    df_grupo.at[idx, 'Firmas Registradas'] = firmas_alumno
+                    nota_firmas = (firmas_alumno / cfg['num_firmas']) * 10.0
+                    df_grupo.at[idx, 'TOTAL FIRMAS'] = round(nota_firmas, 2)
+                
+                # 5. Guardar rasgo SER
                 if cfg['w_ser'] > 0: df_grupo.at[idx, 'Ser'] = ser
                 
-                # 3. Mapeo matemático Dinámico basado únicamente en rasgos activos
+                # Cálculo final con ponderaciones dinámicas (Escala 0-10)
                 p_quiz = (t_quiz * (cfg['w_quiz'] / 100)) if cfg['w_quiz'] > 0 else 0.0
-                p_proy = (p1 * (cfg['w_proyecto'] / 100)) if cfg['w_proyecto'] > 0 else 0.0
-                p_asist = (asist * (cfg['w_asistencia'] / 100)) if cfg['w_asistencia'] > 0 else 0.0
-                p_firmas = (firmas * (cfg['w_firmas'] / 100)) if cfg['w_firmas'] > 0 else 0.0
+                p_proy = (t_proyecto * (cfg['w_proyecto'] / 100)) if cfg['w_proyecto'] > 0 else 0.0
+                p_asist = (nota_asistencia * (cfg['w_asistencia'] / 100)) if cfg['w_asistencia'] > 0 else 0.0
+                p_firmas = (nota_firmas * (cfg['w_firmas'] / 100)) if cfg['w_firmas'] > 0 else 0.0
                 p_ser = (ser * (cfg['w_ser'] / 100)) if cfg['w_ser'] > 0 else 0.0
                 
-                # Calcular la nota final en escala de 0 a 10
                 nota_base_10 = p_quiz + p_proy + p_asist + p_firmas + p_ser
                 df_grupo.at[idx, 'NOTA BASE 10'] = round(nota_base_10, 2)
                 
-                # Ponderación al 30% máximo (3.0 puntos)
+                # Escalar la nota continua al 30% del cuatrimestre (Máximo 3.0 puntos)
                 puntaje_30 = nota_base_10 * 0.3
                 df_grupo.at[idx, 'PUNTAJE 30%'] = round(puntaje_30, 2)
                 
@@ -345,23 +397,20 @@ else:
             story.append(Paragraph(f"ACTA DE EVALUACIÓN CONTINUA (30%) - GRUPO: {g_name} | {cuatri}", meta_style))
             story.append(Spacer(1, 15))
             
-            # Encabezados adaptativos de la tabla del acta PDF
             headers = ["Alumno"]
-            if c['w_quiz'] > 0: headers.append(c['n_quiz'][:8])
-            if c['w_proyecto'] > 0: headers.append(c['n_proyecto'][:8])
-            if c['w_asistencia'] > 0: headers.append(c['n_asistencia'][:6])
-            if c['w_firmas'] > 0: headers.append(c['n_firmas'][:6])
-            if c['w_ser'] > 0: headers.append(c['n_ser'][:6])
+            if c['w_quiz'] > 0: headers.append(c['n_quiz'][:6])
+            if c['w_proyecto'] > 0: headers.append(c['n_proyecto'][:6])
+            if c['w_asistencia'] > 0: headers.append("Asist.")
+            if c['w_firmas'] > 0: headers.append("Firmas")
             headers.extend(["Nota /10", "Puntaje (30%)"])
             
             data = [headers]
             for _, row in df.iterrows():
                 fila = [row['Alumno'][:20]]
                 if c['w_quiz'] > 0: fila.append(str(row['TOTAL QUIZ']))
-                if c['w_proyecto'] > 0: fila.append(str(row['Proyecto']))
+                if c['w_proyecto'] > 0: fila.append(str(row['TOTAL PROYECTO']))
                 if c['w_asistencia'] > 0: fila.append(str(row['Asistencia']))
-                if c['w_firmas'] > 0: fila.append(str(row['Firmas']))
-                if c['w_ser'] > 0: fila.append(str(row['Ser']))
+                if c['w_firmas'] > 0: fila.append(str(row['TOTAL FIRMAS']))
                 fila.extend([str(row['NOTA BASE 10']), str(row['PUNTAJE 30%'])])
                 data.append(fila)
                 
@@ -384,7 +433,7 @@ else:
 
         if not df_grupo.empty:
             pdf_data = generar_pdf_grupo(df_grupo, grupo_seleccionado, cuatrimestre, cfg)
-            st.download_button(label=f"📥 DESCARGAR REPORTE ADAPTATIVO EN PDF", data=pdf_data, file_name=f"Acta_30_{grupo_seleccionado}.pdf", mime="application/pdf", use_container_width=True)
+            st.download_button(label=f"📥 DESCARGAR REPORTE AL 30% EN PDF", data=pdf_data, file_name=f"Acta_30_{grupo_seleccionado}.pdf", mime="application/pdf", use_container_width=True)
 
     with tab_admin:
         st.header(f"🛠️ Panel de Control - Administrando: {grupo_seleccionado}")
