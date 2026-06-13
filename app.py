@@ -160,7 +160,7 @@ with st.sidebar:
                 os.remove(ARCHIVO_BD)
             st.rerun()
 
-# VISTA DE CARGA INICIAL CON PARSER INTELIGENTE MEJORADO
+# VISTA DE CARGA INICIAL
 if not st.session_state.base_datos_grupos:
     st.header("📂 Carga Inicial de Listas (Detección Multigrupo)")
     st.info("💡 **Instrucciones:** Copia el texto completo de tus PDFs de asistencia de la UNAQ y pégalo aquí abajo.")
@@ -186,12 +186,10 @@ if not st.session_state.base_datos_grupos:
                 if not linea_limpia or len(linea_limpia) < 3:
                     continue
                 
-                # 1. EXTRACTOR FLEXIBLE DE NIVEL: Busca cualquier número con punto decimal (ej: 1.4, 2.2)
                 match_nivel = re.search(r'(?:A|B|FR)?-?(\d\.\d)', linea_limpia, re.IGNORECASE)
                 if match_nivel:
                     nivel_actual = f"A{match_nivel.group(1)}"
                 
-                # 2. EXTRACTOR FLEXIBLE DE CARRERA: Busca códigos de planes (ej: IDMA, IAMAM, IALUM)
                 match_carrera = re.search(r'\b([A-Z]{3,5})\d{4}\b', linea_limpia, re.IGNORECASE)
                 if match_carrera:
                     carrera_actual = match_carrera.group(1).upper()
@@ -200,23 +198,17 @@ if not st.session_state.base_datos_grupos:
                 elif "IAMAM" in linea_limpia.upper():
                     carrera_actual = "IAMAM"
 
-                # Si no se ha detectado carrera pero sí nivel, o viceversa, se asumen valores base para no perder datos
-                if carrera_actual == "": 
-                    carrera_temp = "CARRERA"
-                else: 
-                    carrera_temp = carrera_actual
+                if carrera_actual == "": carrera_temp = "CARRERA"
+                else: carrera_temp = carrera_actual
                     
-                if nivel_actual == "": 
-                    nivel_temp = "NIVEL"
-                else: 
-                    nivel_temp = nivel_actual
+                if nivel_actual == "": nivel_temp = "NIVEL"
+                else: nivel_temp = nivel_actual
                 
                 grupo_compuesto = f"{carrera_temp} {nivel_temp}"
                 
                 if any(bloqueo in linea_limpia.lower() for bloqueo in palabras_bloqueadas):
                     continue
                 
-                # Limpieza estricta de códigos del renglón del estudiante
                 linea_limpia = re.sub(r'\b[A-Z]+\d{4}\b', '', linea_limpia, flags=re.IGNORECASE).strip()
                 linea_limpia = re.sub(r'\b\d+\b', '', linea_limpia).strip()
                 linea_limpia = re.sub(r'A?-?FR-?\d\.\d', '', linea_limpia, flags=re.IGNORECASE).strip()
@@ -226,7 +218,6 @@ if not st.session_state.base_datos_grupos:
                         diccionario_grupos[grupo_compuesto] = []
                     diccionario_grupos[grupo_compuesto].append(linea_limpia.upper())
             
-            # Formatear y empaquetar los grupos procesados
             for grupo, lista_alumnos in diccionario_grupos.items():
                 lista_final_alumnos = sorted(list(set(lista_alumnos)))
                 if lista_final_alumnos:
@@ -323,6 +314,7 @@ else:
             with col3:
                 if cfg['w_firmas'] > 0 or cfg['w_ser'] > 0:
                     st.markdown("### 📋 Firmas y Actitud")
+                    # CORRECCIÓN EN ESTE BLOQUE: Se agregó la caja para capturar las firmas del alumno
                     if cfg['w_firmas'] > 0:
                         st.markdown(f"**Total de firmas programadas: {cfg['num_firmas']}**")
                         val_fi_def = int(df_grupo.at[idx, 'Firmas Registradas']) if 'Firmas Registradas' in df_grupo.columns else int(cfg['num_firmas'])
