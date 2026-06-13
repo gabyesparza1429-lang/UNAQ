@@ -36,7 +36,7 @@ def cargar_datos_permanentes():
             # Recuperar configuraciones salvadas
             saved_cfgs = datos_importados.get("configuraciones_grupos", {})
             
-            # CORRECCIÓN DE SEGURIDAD: Validar y rellenar llaves faltantes en configuraciones antiguas
+            # Validar y rellenar llaves faltantes en configuraciones antiguas
             for grupo, cfg in saved_cfgs.items():
                 if 'num_quizes' not in cfg: cfg['num_quizes'] = 4
                 if 'n_quiz' not in cfg: cfg['n_quiz'] = 'Quizes'
@@ -441,7 +441,8 @@ else:
             return buffer
 
         if not df_grupo.empty:
-            pdf_data = generar_pdf_grupo(df_grupo, group_selected=grupo_seleccionado, cuatri=cuatrimestre, c=cfg)
+            # CORRECCIÓN DE LA LÍNEA 444: Llamar a la función usando las etiquetas idénticas a su definición
+            pdf_data = generar_pdf_grupo(df_grupo, grupo_seleccionado, cuatrimestre, cfg)
             st.download_button(label=f"📥 DESCARGAR REPORTE AL 30% EN PDF", data=pdf_data, file_name=f"Acta_30_{grupo_seleccionado}.pdf", mime="application/pdf", use_container_width=True)
 
     with tab_admin:
@@ -457,3 +458,35 @@ else:
                 guardar_datos_permanentes()
                 st.success("¡Grupo renombrado exitosamente!")
                 st.rerun()
+
+        st.write("---")
+        st.subheader("👤 2. Corregir Nombre de un Alumno de este Grupo")
+        if not df_grupo.empty:
+            alumno_a_editar = st.selectbox("Seleccione al alumno con error:", df_grupo['Alumno'].tolist(), key=f"sel_ed_al_{grupo_seleccionado}")
+            nuevo_nombre_alumno = st.text_input("Corrija el nombre:", alumno_a_editar, key=f"txt_ed_al_{grupo_seleccionado}").strip().upper()
+            if st.button("💾 Guardar Corrección del Nombre", key=f"btn_ed_al_{grupo_seleccionado}"):
+                if nuevo_nombre_alumno != "":
+                    idx_al = df_grupo[df_grupo['Alumno'] == alumno_a_editar].index[0]
+                    df_grupo.at[idx_al, 'Alumno'] = nuevo_nombre_alumno
+                    st.session_state.base_datos_grupos[grupo_seleccionado] = df_grupo.sort_values(by="Alumno").reset_index(drop=True)
+                    guardar_datos_permanentes()
+                    st.success("¡Nombre del alumno corregido!")
+                    st.rerun()
+
+        st.write("---")
+        st.subheader("🏃 3. Mover Alumno de este Grupo a Otro Salón")
+        if not df_grupo.empty:
+            alumno_a_mover = st.selectbox("Seleccione al alumno a transferir:", df_grupo['Alumno'].tolist(), key=f"mover_al_{grupo_seleccionado}")
+            lista_destinos = [g for g in list(st.session_state.base_datos_grupos.keys()) if g != grupo_seleccionado]
+            if lista_destinos:
+                grupo_destino = st.selectbox("Seleccione el grupo destino:", lista_destinos, key=f"sel_dest_{grupo_seleccionado}")
+                if st.button("🔀 Confirmar Transferencia", key=f"btn_mov_{grupo_seleccionado}"):
+                    fila_alumno = df_grupo[df_grupo['Alumno'] == alumno_a_mover]
+                    st.session_state.base_datos_grupos[grupo_seleccionado] = df_grupo[df_grupo['Alumno'] != alumno_a_mover]
+                    df_destino = st.session_state.base_datos_grupos[grupo_destino]
+                    st.session_state.base_datos_grupos[grupo_destino] = pd.concat([df_destino, fila_alumno]).sort_values(by="Alumno").reset_index(drop=True)
+                    guardar_datos_permanentes()
+                    st.success(f"¡Alumno transferido exitosamente a {grupo_destino}!")
+                    st.rerun()
+            else:
+                st.warning("No tienes otros grupos creados para poder transferir alumnos.")
