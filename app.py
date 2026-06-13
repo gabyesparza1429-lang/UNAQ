@@ -27,7 +27,7 @@ def guardar_datos_permanentes():
         json.dump(datos_exportar, f, ensure_ascii=False, indent=4)
 
 def cargar_datos_permanentes():
-    """Recupera los datos estructurados y configuraciones específicas desde el disco."""
+    """Recupera los datos estructurados aplicando un validador corrector de columnas antiguas."""
     if os.path.exists(ARCHIVO_BD):
         try:
             with open(ARCHIVO_BD, "r", encoding="utf-8") as f:
@@ -35,14 +35,35 @@ def cargar_datos_permanentes():
             
             st.session_state.configuraciones_grupos = datos_importados.get("configuraciones_grupos", {})
             diccionario_final = {}
+            
             for grupo, lista_filas in datos_importados.get("grupos", {}).items():
-                diccionario_final[grupo] = pd.DataFrame(lista_filas)
+                df = pd.DataFrame(lista_filas)
+                
+                # CORRECCIÓN DE EMERGENCIA: Migrar nombres viejos de columnas a la nueva estructura adaptativa
+                columnas_mapeo = {
+                    '1er Proyecto': 'Proyecto',
+                    'TOTAL PROYECTO': 'TOTAL PROYECTO',
+                    'Asistencia': 'Asistencia',
+                    'Firmas': 'Firmas',
+                    'Ser': 'Ser'
+                }
+                for col_vieja, col_nueva in columnas_mapeo.items():
+                    if col_vieja in df.columns and col_nueva not in df.columns:
+                        df[col_nueva] = df[col_vieja]
+                
+                # Asegurar de forma defensiva que existan todas las columnas base para evitar KeyErrors
+                columnas_obligatorias = ['Alumno', 'TOTAL QUIZ', 'Proyecto', 'Asistencia', 'Firmas', 'Ser', 'NOTA BASE 10', 'PUNTAJE 30%']
+                for col in columnas_obligatorias:
+                    if col not in df.columns:
+                        df[col] = 0.0 if col != 'Alumno' else ''
+                        
+                diccionario_final[grupo] = df
             return diccionario_final
         except:
             return {}
     return {}
 
-# Inicialización segura de los estados de Streamlit
+# Inicialización segura de los estados de la sesión
 if 'configuraciones_grupos' not in st.session_state:
     st.session_state.configuraciones_grupos = {}
 if 'base_datos_grupos' not in st.session_state:
@@ -61,7 +82,7 @@ with st.sidebar:
         lista_de_grupos = list(st.session_state.base_datos_grupos.keys())
         grupo_seleccionado = st.selectbox("📂 Seleccione el Grupo para Trabajar:", lista_de_grupos)
         
-        # Inicializar configuración específica de este grupo si no existe
+        # Inicializar configuración específica del grupo seleccionado si no existía
         if grupo_seleccionado not in st.session_state.configuraciones_grupos:
             st.session_state.configuraciones_grupos[grupo_seleccionado] = {
                 'num_quizes': 4, 'n_quiz': 'Quizes', 'w_quiz': 40,
@@ -78,29 +99,28 @@ with st.sidebar:
         with st.expander(f"⚙️ Configurar Rasgos de: {grupo_seleccionado}"):
             st.caption("Define el número de quizes y el peso de cada rasgo. Asigna 0% para desactivar un rubro.")
             
-            # Control interactivo del número de quizes
             cfg['num_quizes'] = st.number_input("Número de Quizes a programar:", min_value=1, max_value=10, value=int(cfg['num_quizes']))
             
             st.markdown("**Pesos e Identificadores (Suma total debe ser 100%):**")
             
             col_n1, col_p1 = st.columns([2, 1])
-            with col_n1: cfg['n_quiz'] = st.text_input("Nombre Rasgo 1:", cfg['n_quiz'])
+            with col_n1: cfg['n_quiz'] = st.text_input("Nombre Quiz:", cfg['n_quiz'])
             with col_p1: cfg['w_quiz'] = st.number_input("Quiz %", 0, 100, int(cfg['w_quiz']), key="wq")
             
             col_n2, col_p2 = st.columns([2, 1])
-            with col_n2: cfg['n_proyecto'] = st.text_input("Nombre Rasgo 2:", cfg['n_proyecto'])
+            with col_n2: cfg['n_proyecto'] = st.text_input("Nombre Proyecto:", cfg['n_proyecto'])
             with col_p2: cfg['w_proyecto'] = st.number_input("Proy %", 0, 100, int(cfg['w_proyecto']), key="wp")
             
             col_n3, col_p3 = st.columns([2, 1])
-            with col_n3: cfg['n_asistencia'] = st.text_input("Nombre Rasgo 3:", cfg['n_asistencia'])
+            with col_n3: cfg['n_asistencia'] = st.text_input("Nombre Asist:", cfg['n_asistencia'])
             with col_p3: cfg['w_asistencia'] = st.number_input("Asist %", 0, 100, int(cfg['w_asistencia']), key="wa")
             
             col_n4, col_p4 = st.columns([2, 1])
-            with col_n4: cfg['n_firmas'] = st.text_input("Nombre Rasgo 4:", cfg['n_firmas'])
+            with col_n4: cfg['n_firmas'] = st.text_input("Nombre Firmas:", cfg['n_firmas'])
             with col_p4: cfg['w_firmas'] = st.number_input("Firmas %", 0, 100, int(cfg['w_firmas']), key="wf")
             
             col_n5, col_p5 = st.columns([2, 1])
-            with col_n5: cfg['n_ser'] = st.text_input("Nombre Rasgo 5:", cfg['n_ser'])
+            with col_n5: cfg['n_ser'] = st.text_input("Nombre SER:", cfg['n_ser'])
             with col_p5: cfg['w_ser'] = st.number_input("SER %", 0, 100, int(cfg['w_ser']), key="ws")
             
             suma_total = cfg['w_quiz'] + cfg['w_proyecto'] + cfg['w_asistencia'] + cfg['w_firmas'] + cfg['w_ser']
@@ -109,7 +129,8 @@ with st.sidebar:
             else:
                 st.success("Distribución válida de rasgos.")
                 st.session_state.configuraciones_grupos[grupo_seleccionado] = cfg
-                # Ajustar dinámicamente las columnas del dataframe si aumentó el número de quizes
+                
+                # Inyección dinámica de columnas de quiz faltantes si el usuario aumentó el número
                 df_actual = st.session_state.base_datos_grupos[grupo_seleccionado]
                 for q_idx in range(1, cfg['num_quizes'] + 1):
                     col_q = f"Quiz {q_idx}"
@@ -126,7 +147,7 @@ with st.sidebar:
                 os.remove(ARCHIVO_BD)
             st.rerun()
 
-# VISTA DE CARGA INICIAL
+# VISTA DE CARGA INICIAL (PAGINACIÓN CONTROLADA)
 if not st.session_state.base_datos_grupos:
     st.header("📂 Carga Inicial de Listas (Detección Multigrupo)")
     st.info("💡 **Instrucciones:** Copia el texto completo de tus PDFs de asistencia de la UNAQ y pégalo aquí abajo.")
@@ -247,9 +268,11 @@ else:
                 if cfg['w_proyecto'] > 0 or cfg['w_asistencia'] > 0:
                     st.markdown("### 🏗️ Entregables")
                     if cfg['w_proyecto'] > 0:
-                        p1 = st.number_input(f"Nota de {cfg['n_proyecto']}", 0.0, 10.0, float(df_grupo.at[idx, 'Proyecto']), 0.1, key=f"p1_{idx}")
+                        val_proj = float(df_grupo.at[idx, 'Proyecto']) if 'Proyecto' in df_grupo.columns else 0.0
+                        p1 = st.number_input(f"Nota de {cfg['n_proyecto']}", 0.0, 10.0, val_proj, 0.1, key=f"p1_{idx}")
                     if cfg['w_asistencia'] > 0:
-                        asist = st.number_input(f"Nota de {cfg['n_asistencia']}", 0.0, 10.0, float(df_grupo.at[idx, 'Asistencia']), 0.1, key=f"as_{idx}")
+                        val_asist = float(df_grupo.at[idx, 'Asistencia']) if 'Asistencia' in df_grupo.columns else 0.0
+                        asist = st.number_input(f"Nota de {cfg['n_asistencia']}", 0.0, 10.0, val_asist, 0.1, key=f"as_{idx}")
                         
             with col3:
                 firmas = 0.0
@@ -257,9 +280,11 @@ else:
                 if cfg['w_firmas'] > 0 or cfg['w_ser'] > 0:
                     st.markdown("### 📋 Formación")
                     if cfg['w_firmas'] > 0:
-                        firmas = st.number_input(f"Nota de {cfg['n_firmas']}", 0.0, 10.0, float(df_grupo.at[idx, 'Firmas']), 0.1, key=f"fi_{idx}")
+                        val_firmas = float(df_grupo.at[idx, 'Firmas']) if 'Firmas' in df_grupo.columns else 0.0
+                        firmas = st.number_input(f"Nota de {cfg['n_firmas']}", 0.0, 10.0, val_firmas, 0.1, key=f"fi_{idx}")
                     if cfg['w_ser'] > 0:
-                        ser = st.number_input(f"Nota de {cfg['n_ser']}", 0.0, 10.0, float(df_grupo.at[idx, 'Ser']), 0.1, key=f"se_{idx}")
+                        val_ser = float(df_grupo.at[idx, 'Ser']) if 'Ser' in df_grupo.columns else 0.0
+                        ser = st.number_input(f"Nota de {cfg['n_ser']}", 0.0, 10.0, val_ser, 0.1, key=f"se_{idx}")
                         
             if st.button("💾 Guardar y Calcular Calificación", type="primary", use_container_width=True):
                 suma_quizes = 0.0
@@ -328,8 +353,6 @@ else:
         nuevo_nombre_grupo = st.text_input("Escriba el nuevo nombre:", grupo_seleccionado, key=f"txt_gname_{grupo_seleccionado}")
         if st.button("💾 Guardar Nuevo Nombre del Grupo", key=f"btn_gname_{grupo_seleccionado}"):
             nuevo_nombre_grupo = nuevo_nombre_grupo.strip().upper()
-            
-            # CORRECCIÓN AQUÍ: Se cambió "group_selected" por "grupo_seleccionado"
             if nuevo_nombre_grupo != "" and nuevo_nombre_grupo != grupo_seleccionado:
                 st.session_state.base_datos_grupos[nuevo_nombre_grupo] = st.session_state.base_datos_grupos.pop(grupo_seleccionado)
                 if grupo_seleccionado in st.session_state.configuraciones_grupos:
