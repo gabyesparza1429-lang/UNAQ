@@ -12,11 +12,10 @@ from reportlab.lib import colors
 # Configuración inicial de la interfaz web
 st.set_page_config(page_title="GEM UNAQ - Control de Notas Adaptativo", layout="wide")
 
-# Nombre del archivo persistente en disco para la memoria permanente
+# Nombre del archivo permanente
 ARCHIVO_BD = "base_datos_alumnos.json"
 
 def guardar_datos_permanentes():
-    """Serializa la base de datos de grupos y configuraciones a un archivo JSON."""
     datos_exportar = {
         "grupos": {},
         "configuraciones_grupos": st.session_state.configuraciones_grupos
@@ -27,15 +26,12 @@ def guardar_datos_permanentes():
         json.dump(datos_exportar, f, ensure_ascii=False, indent=4)
 
 def cargar_datos_permanentes():
-    """Recupera los datos estructurados aplicando un validador corrector de columnas dinámicas."""
     if os.path.exists(ARCHIVO_BD):
         try:
             with open(ARCHIVO_BD, "r", encoding="utf-8") as f:
                 datos_importados = json.load(f)
             
             saved_cfgs = datos_importados.get("configuraciones_grupos", {})
-            
-            # Validar y rellenar llaves faltantes en configuraciones antiguas
             for grupo, cfg in saved_cfgs.items():
                 if 'num_quizes' not in cfg: cfg['num_quizes'] = 4
                 if 'n_quiz' not in cfg: cfg['n_quiz'] = 'Quizes'
@@ -58,29 +54,26 @@ def cargar_datos_permanentes():
             diccionario_final = {}
             for grupo, lista_filas in datos_importados.get("grupos", {}).items():
                 df = pd.DataFrame(lista_filas)
-                
                 columnas_obligatorias = ['Alumno', 'TOTAL QUIZ', 'TOTAL PROYECTO', 'TOTAL FIRMAS', 'Asistencia', 'Ser', 'NOTA BASE 10', 'PUNTAJE 30%']
                 for col in columnas_obligatorias:
                     if col not in df.columns:
                         df[col] = 0.0 if col != 'Alumno' else ''
-                        
                 diccionario_final[grupo] = df
             return diccionario_final
         except:
             return {}
     return {}
 
-# Inicialización segura de los estados de la sesión
 if 'configuraciones_grupos' not in st.session_state:
     st.session_state.configuraciones_grupos = {}
 if 'base_datos_grupos' not in st.session_state:
     st.session_state.base_datos_grupos = cargar_datos_permanentes()
 
 st.title("✈️ Generador de Interfaces GEM - UNAQ")
-st.write("Configuración adaptativa de Evaluación Continua (30% Global) con asignación de cantidades por rasgo.")
+st.write("Configuración adaptativa de Evaluación Continua (30% Global). Extractor optimizado Multi-Nivel.")
 st.write("---")
 
-# BARRA LATERAL: Parámetros de Configuración por Grupo
+# BARRA LATERAL
 with st.sidebar:
     st.header("📋 Datos del Curso")
     cuatrimestre = st.text_input("Cuatrimestre actual:", "MAYO-AGOSTO 2026")
@@ -102,45 +95,38 @@ with st.sidebar:
         
         st.write("---")
         with st.expander(f"⚙️ Programar Estructura de: {grupo_seleccionado}"):
-            st.caption("Asigna 0% para desactivar un rasgo completo del plan de evaluación.")
-            
-            col_n1, col_p1 = st.columns([2, 1])
-            with col_n1: cfg['n_quiz'] = st.text_input("Nombre Rubro 1:", cfg['n_quiz'])
-            with col_p1: cfg['w_quiz'] = st.number_input("% Quiz", 0, 100, int(cfg['w_quiz']), key="wq")
+            cfg['n_quiz'] = st.text_input("Nombre Rubro 1:", cfg['n_quiz'])
+            cfg['w_quiz'] = st.number_input("% Quiz", 0, 100, int(cfg['w_quiz']), key="wq")
             if cfg['w_quiz'] > 0:
                 cfg['num_quizes'] = st.number_input("¿Cuántos Quizes?", 1, 10, int(cfg['num_quizes']), key="nq")
             else:
                 cfg['num_quizes'] = 0
                 
             st.markdown("---")
-            col_n2, col_p2 = st.columns([2, 1])
-            with col_n2: cfg['n_proyecto'] = st.text_input("Nombre Rubro 2:", cfg['n_proyecto'])
-            with col_p2: cfg['w_proyecto'] = st.number_input("% Proy", 0, 100, int(cfg['w_proyecto']), key="wp")
+            cfg['n_proyecto'] = st.text_input("Nombre Rubro 2:", cfg['n_proyecto'])
+            cfg['w_proyecto'] = st.number_input("% Proy", 0, 100, int(cfg['w_proyecto']), key="wp")
             if cfg['w_proyecto'] > 0:
                 cfg['num_proyectos'] = st.number_input("¿Cuántos Proyectos?", 1, 10, int(cfg['num_proyectos']), key="np")
             else:
                 cfg['num_proyectos'] = 0
                 
             st.markdown("---")
-            col_n3, col_p3 = st.columns([2, 1])
-            with col_n3: cfg['n_asistencia'] = st.text_input("Nombre Rubro 3:", cfg['n_asistencia'])
-            with col_p3: cfg['w_asistencia'] = st.number_input("% Asist", 0, 100, int(cfg['w_asistencia']), key="wa")
+            cfg['n_asistencia'] = st.text_input("Nombre Rubro 3:", cfg['n_asistencia'])
+            cfg['w_asistencia'] = st.number_input("% Asist", 0, 100, int(cfg['w_asistencia']), key="wa")
             if cfg['w_asistencia'] > 0:
                 cfg['dias_asistencia'] = st.number_input("Días totales de clase:", 1, 100, int(cfg['dias_asistencia']), key="da")
                 
             st.markdown("---")
-            col_n4, col_p4 = st.columns([2, 1])
-            with col_n4: cfg['n_firmas'] = st.text_input("Nombre Rubro 4:", cfg['n_firmas'])
-            with col_p4: cfg['w_firmas'] = st.number_input("% Firmas", 0, 100, int(cfg['w_firmas']), key="wf")
+            cfg['n_firmas'] = st.text_input("Nombre Rubro 4:", cfg['n_firmas'])
+            cfg['w_firmas'] = st.number_input("% Firmas", 0, 100, int(cfg['w_firmas']), key="wf")
             if cfg['w_firmas'] > 0:
                 cfg['num_firmas'] = st.number_input("Número total de firmas:", 1, 100, int(cfg['num_firmas']), key="nf")
             else:
                 cfg['num_firmas'] = 0
                 
             st.markdown("---")
-            col_n5, col_p5 = st.columns([2, 1])
-            with col_n5: cfg['n_ser'] = st.text_input("Nombre Rubro 5:", cfg['n_ser'])
-            with col_p5: cfg['w_ser'] = st.number_input("% SER", 0, 100, int(cfg['w_ser']), key="ws")
+            cfg['n_ser'] = st.text_input("Nombre Rubro 5:", cfg['n_ser'])
+            cfg['w_ser'] = st.number_input("% SER", 0, 100, int(cfg['w_ser']), key="ws")
             
             st.markdown("---")
             suma_total = cfg['w_quiz'] + cfg['w_proyecto'] + cfg['w_asistencia'] + cfg['w_firmas'] + cfg['w_ser']
@@ -174,7 +160,7 @@ with st.sidebar:
                 os.remove(ARCHIVO_BD)
             st.rerun()
 
-# VISTA DE CARGA INICIAL CON LOGICA DE EXTRACTOR BLINDADA
+# VISTA DE CARGA INICIAL CON PARSER INTELIGENTE MEJORADO
 if not st.session_state.base_datos_grupos:
     st.header("📂 Carga Inicial de Listas (Detección Multigrupo)")
     st.info("💡 **Instrucciones:** Copia el texto completo de tus PDFs de asistencia de la UNAQ y pégalo aquí abajo.")
@@ -192,46 +178,58 @@ if not st.session_state.base_datos_grupos:
             ]
             
             diccionario_grupos = {}
-            carrera_detectada = ""
-            nivel_detectado = ""
-            grupo_actual = "GRUPO NO ESPECIFICADO"
+            carrera_actual = ""
+            nivel_actual = ""
             
             for linea in lineas:
                 linea_limpia = linea.replace('"', '').replace(',', '').replace('\'', '').strip()
                 if not linea_limpia or len(linea_limpia) < 3:
                     continue
                 
-                # CORRECCIÓN DE MEMORIA PERSISTENTE: Buscar nivel de idioma sin resetear la carrera
-                match_frn = re.search(r'A?-?FR-?A?(\d\.\d)', linea_limpia, re.IGNORECASE)
-                if match_frn:
-                    nivel_detectado = f"A{match_frn.group(1)}"
+                # 1. EXTRACTOR FLEXIBLE DE NIVEL: Busca cualquier número con punto decimal (ej: 1.4, 2.2)
+                match_nivel = re.search(r'(?:A|B|FR)?-?(\d\.\d)', linea_limpia, re.IGNORECASE)
+                if match_nivel:
+                    nivel_actual = f"A{match_nivel.group(1)}"
                 
-                # Buscar carrera en el plan de estudios sin borrar el nivel guardado
-                match_plan = re.search(r'\b([A-Z]+)\d{4}\b', linea_limpia, re.IGNORECASE)
-                if match_plan:
-                    carrera_detectada = match_plan.group(1).upper()
+                # 2. EXTRACTOR FLEXIBLE DE CARRERA: Busca códigos de planes (ej: IDMA, IAMAM, IALUM)
+                match_carrera = re.search(r'\b([A-Z]{3,5})\d{4}\b', linea_limpia, re.IGNORECASE)
+                if match_carrera:
+                    carrera_actual = match_carrera.group(1).upper()
+                elif "IDMA" in linea_limpia.upper():
+                    carrera_actual = "IDMA"
+                elif "IAMAM" in linea_limpia.upper():
+                    carrera_actual = "IAMAM"
+
+                # Si no se ha detectado carrera pero sí nivel, o viceversa, se asumen valores base para no perder datos
+                if carrera_actual == "": 
+                    carrera_temp = "CARRERA"
+                else: 
+                    carrera_temp = carrera_actual
+                    
+                if nivel_actual == "": 
+                    nivel_temp = "NIVEL"
+                else: 
+                    nivel_temp = nivel_actual
                 
-                # Si ambos estados están llenos, actualizamos el grupo actual de asignación
-                if carrera_detectada and nivel_detectado:
-                    grupo_actual = f"{carrera_detectada} {nivel_detectado}"
-                    if grupo_actual not in diccionario_grupos:
-                        diccionario_grupos[grupo_actual] = []
+                grupo_compuesto = f"{carrera_temp} {nivel_temp}"
                 
                 if any(bloqueo in linea_limpia.lower() for bloqueo in palabras_bloqueadas):
                     continue
                 
-                # Limpieza de códigos de la fila del alumno
+                # Limpieza estricta de códigos del renglón del estudiante
                 linea_limpia = re.sub(r'\b[A-Z]+\d{4}\b', '', linea_limpia, flags=re.IGNORECASE).strip()
                 linea_limpia = re.sub(r'\b\d+\b', '', linea_limpia).strip()
+                linea_limpia = re.sub(r'A?-?FR-?\d\.\d', '', linea_limpia, flags=re.IGNORECASE).strip()
                 
-                if len(linea_limpia.split()) >= 2 and not linea_limpia.startswith("A-FR-") and not "INGLES" in linea_limpia.upper():
-                    if grupo_actual not in diccionario_grupos:
-                        diccionario_grupos[grupo_actual] = []
-                    diccionario_grupos[grupo_actual].append(linea_limpia.upper())
+                if len(linea_limpia.split()) >= 2 and not "INGLES" in linea_limpia.upper():
+                    if grupo_compuesto not in diccionario_grupos:
+                        diccionario_grupos[grupo_compuesto] = []
+                    diccionario_grupos[grupo_compuesto].append(linea_limpia.upper())
             
+            # Formatear y empaquetar los grupos procesados
             for grupo, lista_alumnos in diccionario_grupos.items():
                 lista_final_alumnos = sorted(list(set(lista_alumnos)))
-                if lista_final_alumnos and grupo != "GRUPO NO ESPECIFICADO":
+                if lista_final_alumnos:
                     df_init = pd.DataFrame({'Alumno': lista_final_alumnos})
                     for q in range(1, 5): df_init[f"Quiz {q}"] = 0.0
                     for p in range(1, 3): df_init[f"Proyecto {p}"] = 0.0
@@ -248,10 +246,10 @@ if not st.session_state.base_datos_grupos:
             
             if st.session_state.base_datos_grupos:
                 guardar_datos_permanentes()
-                st.success("🎉 ¡Grupos estructurados con éxito respetando carreras y niveles!")
+                st.success("🎉 ¡Listas analizadas con éxito! Revisa la barra izquierda para cambiar de salón.")
                 st.rerun()
 
-# INTERFAZ DINÁMICA DE TRABAJO DIARIO
+# INTERFAZ DE OPERACIÓN DIARIA
 else:
     df_grupo = st.session_state.base_datos_grupos[grupo_seleccionado]
     cfg = st.session_state.configuraciones_grupos[grupo_seleccionado]
@@ -442,9 +440,7 @@ else:
     with tab_admin:
         st.header("🛠️ Panel de Control - Administrar Salón y Listas")
         
-        # AGREGAR MÁS GRUPOS MANUALMENTE
         st.subheader("📂 1. Crear Nuevo Grupo Manualmente")
-        st.caption("Escribe el identificador de la nueva clase si el PDF de la UNAQ no lo detectó de origen.")
         nombre_grupo_nuevo = st.text_input("Nombre del Nuevo Grupo (Ej: IDMA A1.4):", key="txt_add_manual_g").strip().upper()
         
         if st.button("💾 Crear Grupo Vacío", key="btn_add_manual_g"):
@@ -463,11 +459,10 @@ else:
                     'n_ser': 'SER / Actitud', 'w_ser': 10
                 }
                 guardar_datos_permanentes()
-                st.success(f"🎉 ¡El grupo {nombre_grupo_nuevo} fue creado! Ya puedes seleccionarlo a la izquierda.")
+                st.success(f"🎉 ¡El grupo {nombre_grupo_nuevo} fue creado!")
                 st.rerun()
         
         st.write("---")
-        # REGISTRO MANUAL DE ALUMNOS NUEVOS
         st.subheader(f"➕ 2. Registrar Alumno en el Grupo {grupo_seleccionado}")
         nombre_nuevo_alumno = st.text_input("Escriba los apellidos y nombres completos del nuevo estudiante:", key=f"add_manual_al_{grupo_seleccionado}")
         
@@ -493,19 +488,14 @@ else:
                 st.rerun()
 
         st.write("---")
-        # ELIMINAR ALUMNOS DEFINITIVAMENTE
         st.subheader(f"🗑️ 3. Eliminar Alumno Definitivamente de {grupo_seleccionado}")
-        st.caption("Baja permanente del estudiante. Esta acción borrará todas sus calificaciones asociadas.")
-        
         if not df_grupo.empty:
             alumno_a_eliminar = st.selectbox("Selecciona al alumno que deseas dar de baja:", df_grupo['Alumno'].tolist(), key=f"sel_del_al_{grupo_seleccionado}")
             if st.button("🗑️ Confirmar Baja Definitiva", key=f"btn_del_al_{grupo_seleccionado}", type="primary"):
                 st.session_state.base_datos_grupos[grupo_seleccionado] = df_grupo[df_grupo['Alumno'] != alumno_a_eliminar].reset_index(drop=True)
                 guardar_datos_permanentes()
-                st.success(f"💥 {alumno_a_eliminar} ha sido eliminado del grupo permanentemente.")
+                st.success(f"💥 {alumno_a_eliminar} ha sido eliminado.")
                 st.rerun()
-        else:
-            st.caption("No hay alumnos registrados en este grupo para eliminar.")
 
         st.write("---")
         st.subheader("✏️ 4. Cambiar Nombre a este Grupo")
@@ -517,7 +507,7 @@ else:
                 if grupo_seleccionado in st.session_state.configuraciones_grupos:
                     st.session_state.configuraciones_grupos[nuevo_nombre_grupo] = st.session_state.configuraciones_grupos.pop(grupo_seleccionado)
                 guardar_datos_permanentes()
-                st.success("¡Grupo renombrado exitosamente!")
+                st.success("¡Grupo renombrado!")
                 st.rerun()
 
         st.write("---")
@@ -531,7 +521,7 @@ else:
                     df_grupo.at[idx_al, 'Alumno'] = nuevo_nombre_alumno
                     st.session_state.base_datos_grupos[grupo_seleccionado] = df_grupo.sort_values(by="Alumno").reset_index(drop=True)
                     guardar_datos_permanentes()
-                    st.success("¡Nombre del alumno corregido!")
+                    st.success("¡Nombre corregido!")
                     st.rerun()
 
         st.write("---")
@@ -547,7 +537,5 @@ else:
                     df_destino = st.session_state.base_datos_grupos[grupo_destino]
                     st.session_state.base_datos_grupos[grupo_destino] = pd.concat([df_destino, fila_alumno]).sort_values(by="Alumno").reset_index(drop=True)
                     guardar_datos_permanentes()
-                    st.success(f"¡Alumno transferido exitosamente a {grupo_destino}!")
+                    st.success("¡Alumno transferido exitosamente!")
                     st.rerun()
-            else:
-                st.warning("No tienes otros grupos creados para poder transferir alumnos.")
