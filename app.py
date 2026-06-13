@@ -174,7 +174,7 @@ with st.sidebar:
                 os.remove(ARCHIVO_BD)
             st.rerun()
 
-# VISTA DE CARGA INICIAL
+# VISTA DE CARGA INICIAL CON LOGICA DE EXTRACTOR BLINDADA
 if not st.session_state.base_datos_grupos:
     st.header("📂 Carga Inicial de Listas (Detección Multigrupo)")
     st.info("💡 **Instrucciones:** Copia el texto completo de tus PDFs de asistencia de la UNAQ y pégalo aquí abajo.")
@@ -201,21 +201,26 @@ if not st.session_state.base_datos_grupos:
                 if not linea_limpia or len(linea_limpia) < 3:
                     continue
                 
+                # CORRECCIÓN DE MEMORIA PERSISTENTE: Buscar nivel de idioma sin resetear la carrera
                 match_frn = re.search(r'A?-?FR-?A?(\d\.\d)', linea_limpia, re.IGNORECASE)
                 if match_frn:
                     nivel_detectado = f"A{match_frn.group(1)}"
                 
+                # Buscar carrera en el plan de estudios sin borrar el nivel guardado
                 match_plan = re.search(r'\b([A-Z]+)\d{4}\b', linea_limpia, re.IGNORECASE)
                 if match_plan:
                     carrera_detectada = match_plan.group(1).upper()
-                    if carrera_detectada and nivel_detectado:
-                        grupo_actual = f"{carrera_detectada} {nivel_detectado}"
-                        if grupo_actual not in diccionario_grupos:
-                            diccionario_grupos[grupo_actual] = []
+                
+                # Si ambos estados están llenos, actualizamos el grupo actual de asignación
+                if carrera_detectada and nivel_detectado:
+                    grupo_actual = f"{carrera_detectada} {nivel_detectado}"
+                    if grupo_actual not in diccionario_grupos:
+                        diccionario_grupos[grupo_actual] = []
                 
                 if any(bloqueo in linea_limpia.lower() for bloqueo in palabras_bloqueadas):
                     continue
                 
+                # Limpieza de códigos de la fila del alumno
                 linea_limpia = re.sub(r'\b[A-Z]+\d{4}\b', '', linea_limpia, flags=re.IGNORECASE).strip()
                 linea_limpia = re.sub(r'\b\d+\b', '', linea_limpia).strip()
                 
@@ -243,7 +248,7 @@ if not st.session_state.base_datos_grupos:
             
             if st.session_state.base_datos_grupos:
                 guardar_datos_permanentes()
-                st.success("🎉 ¡Grupos estructurados con éxito!")
+                st.success("🎉 ¡Grupos estructurados con éxito respetando carreras y niveles!")
                 st.rerun()
 
 # INTERFAZ DINÁMICA DE TRABAJO DIARIO
@@ -448,11 +453,8 @@ else:
             elif nombre_grupo_nuevo in st.session_state.base_datos_grupos:
                 st.warning("⚠️ Este grupo ya existe en la base de datos.")
             else:
-                # Estructura inicial limpia y vacía
                 df_nuevo_g = pd.DataFrame(columns=['Alumno', 'TOTAL QUIZ', 'TOTAL PROYECTO', 'TOTAL FIRMAS', 'Asistencia', 'Ser', 'NOTA BASE 10', 'PUNTAJE 30%'])
                 st.session_state.base_datos_grupos[nombre_grupo_nuevo] = df_nuevo_g
-                
-                # Asignar configuración por defecto para el grupo creado
                 st.session_state.configuraciones_grupos[nombre_grupo_nuevo] = {
                     'num_quizes': 4, 'n_quiz': 'Quizes', 'w_quiz': 30,
                     'num_proyectos': 2, 'n_proyecto': 'Proyectos', 'w_proyecto': 30,
@@ -491,13 +493,12 @@ else:
                 st.rerun()
 
         st.write("---")
-        # ELIMINAR ALUMNOS DEFINITIVAMENTE (Nueva Característica Solicitada)
+        # ELIMINAR ALUMNOS DEFINITIVAMENTE
         st.subheader(f"🗑️ 3. Eliminar Alumno Definitivamente de {grupo_seleccionado}")
         st.caption("Baja permanente del estudiante. Esta acción borrará todas sus calificaciones asociadas.")
         
         if not df_grupo.empty:
             alumno_a_eliminar = st.selectbox("Selecciona al alumno que deseas dar de baja:", df_grupo['Alumno'].tolist(), key=f"sel_del_al_{grupo_seleccionado}")
-            
             if st.button("🗑️ Confirmar Baja Definitiva", key=f"btn_del_al_{grupo_seleccionado}", type="primary"):
                 st.session_state.base_datos_grupos[grupo_seleccionado] = df_grupo[df_grupo['Alumno'] != alumno_a_eliminar].reset_index(drop=True)
                 guardar_datos_permanentes()
