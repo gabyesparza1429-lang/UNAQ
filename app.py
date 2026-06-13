@@ -441,13 +441,47 @@ else:
             return buffer
 
         if not df_grupo.empty:
-            # CORRECCIÓN DE LA LÍNEA 444: Llamar a la función usando las etiquetas idénticas a su definición
             pdf_data = generar_pdf_grupo(df_grupo, grupo_seleccionado, cuatrimestre, cfg)
             st.download_button(label=f"📥 DESCARGAR REPORTE AL 30% EN PDF", data=pdf_data, file_name=f"Acta_30_{grupo_seleccionado}.pdf", mime="application/pdf", use_container_width=True)
 
     with tab_admin:
         st.header(f"🛠️ Panel de Control - Administrando: {grupo_seleccionado}")
-        st.subheader("✏️ Cambiar Nombre a este Grupo")
+        
+        # NUEVA FUNCIÓN: REGISTRO MANUAL DE ALUMNOS NUEVOS
+        st.subheader("➕ 1. Registrar Nuevo Alumno Manualmente")
+        st.caption("Añade un alumno nuevo que no estaba en el archivo JSON original de la UNAQ.")
+        nombre_nuevo_alumno = st.text_input("Escriba los apellidos y nombres completos:", key=f"add_manual_al_{grupo_seleccionado}")
+        
+        if st.button("➕ Añadir Alumno a este Grupo", key=f"btn_add_manual_{grupo_seleccionado}"):
+            nombre_limpio = nombre_nuevo_alumno.strip().upper()
+            if nombre_limpio == "":
+                st.error("⚠️ Por favor escribe un nombre válido antes de guardar.")
+            elif nombre_limpio in df_grupo['Alumno'].tolist():
+                st.warning("⚠️ Este alumno ya se encuentra registrado en este grupo.")
+            else:
+                # Construir diccionario adaptivo basado en las columnas reales del DataFrame actual
+                nueva_fila = {}
+                for col in df_grupo.columns:
+                    if col == 'Alumno':
+                        nueva_fila[col] = nombre_limpio
+                    elif 'Días Asistidos' in col:
+                        nueva_fila[col] = int(cfg.get('dias_asistencia', 32))
+                    elif 'Firmas Registradas' in col:
+                        nueva_fila[col] = int(cfg.get('num_firmas', 15))
+                    elif col in ['Asistencia', 'TOTAL FIRMAS']:
+                        nueva_fila[col] = 10.0
+                    else:
+                        nueva_fila[col] = 0.0
+                
+                # Insertar, ordenar alfabéticamente y persistir cambios
+                df_nuevo_registro = pd.DataFrame([nueva_fila])
+                st.session_state.base_datos_grupos[grupo_seleccionado] = pd.concat([df_grupo, df_nuevo_registro]).sort_values(by="Alumno").reset_index(drop=True)
+                guardar_datos_permanentes()
+                st.success(f"🎉 ¡{nombre_limpio} fue agregado con éxito al grupo!")
+                st.rerun()
+
+        st.write("---")
+        st.subheader("✏️ 2. Cambiar Nombre a este Grupo")
         nuevo_nombre_grupo = st.text_input("Escriba el nuevo nombre:", grupo_seleccionado, key=f"txt_gname_{grupo_seleccionado}")
         if st.button("💾 Guardar Nuevo Nombre del Grupo", key=f"btn_gname_{grupo_seleccionado}"):
             nuevo_nombre_grupo = nuevo_nombre_grupo.strip().upper()
@@ -460,7 +494,7 @@ else:
                 st.rerun()
 
         st.write("---")
-        st.subheader("👤 2. Corregir Nombre de un Alumno de este Grupo")
+        st.subheader("👤 3. Corregir Nombre de un Alumno de este Grupo")
         if not df_grupo.empty:
             alumno_a_editar = st.selectbox("Seleccione al alumno con error:", df_grupo['Alumno'].tolist(), key=f"sel_ed_al_{grupo_seleccionado}")
             nuevo_nombre_alumno = st.text_input("Corrija el nombre:", alumno_a_editar, key=f"txt_ed_al_{grupo_seleccionado}").strip().upper()
@@ -474,7 +508,7 @@ else:
                     st.rerun()
 
         st.write("---")
-        st.subheader("🏃 3. Mover Alumno de este Grupo a Otro Salón")
+        st.subheader("🏃 4. Mover Alumno de este Grupo a Otro Salón")
         if not df_grupo.empty:
             alumno_a_mover = st.selectbox("Seleccione al alumno a transferir:", df_grupo['Alumno'].tolist(), key=f"mover_al_{grupo_seleccionado}")
             lista_destinos = [g for g in list(st.session_state.base_datos_grupos.keys()) if g != grupo_seleccionado]
