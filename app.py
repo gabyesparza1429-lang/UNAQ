@@ -32,22 +32,20 @@ def cargar_datos_permanentes():
             with open(ARCHIVO_BD, "r", encoding="utf-8") as f:
                 datos_importados = json.load(f)
             
-            # RESCATE ULTRA-FORZADO: Cargar datos sin importar el formato interno del JSON
-            if "grupos" in datos_importados:
-                # Formato nuevo
+            # FILTRO DE SEGURIDAD REFORZADO PARA LEER ESTRUCTURAS VIEJAS Y NUEVAS
+            if isinstance(datos_importados, dict) and "grupos" in datos_importados:
                 st.session_state.examenes_programados = datos_importados.get("examenes_programados", {})
                 st.session_state.configuraciones_grupos = datos_importados.get("configuraciones_grupos", {})
                 bloque_grupos = datos_importados.get("grupos", {})
             else:
-                # Formato viejo directo (Rescate directo si guardó como diccionario plano)
-                bloque_grupos = datos_importados
+                bloque_grupos = datos_importados if isinstance(datos_importados, dict) else {}
                 st.session_state.examenes_programados = {}
                 st.session_state.configuraciones_grupos = {}
             
             diccionario_final = {}
             for grupo, lista_filas in bloque_grupos.items():
                 df = pd.DataFrame(lista_filas)
-                # Forzar la existencia de todas las columnas de cálculo para que no falle la tabla
+                # Crear las columnas necesarias si no existen para evitar que falle Pandas
                 columnas_obligatorias = ['Alumno', 'TOTAL QUIZ', 'TOTAL PROYECTO', 'TOTAL FIRMAS', 'Asistencia', 'Ser', 'NOTA BASE 10', 'PUNTAJE 30%']
                 for col in columnas_obligatorias:
                     if col not in df.columns:
@@ -55,11 +53,11 @@ def cargar_datos_permanentes():
                 diccionario_final[grupo] = df
             return diccionario_final
         except Exception as e:
-            # Si el JSON está corrupto o dañado, intentamos leerlo como texto crudo para no perder nada
+            st.error(f"Error interno al procesar el archivo guardado: {str(e)}")
             return {}
     return {}
 
-# Inicialización segura en cascada
+# Bucle de inicialización forzado y automático
 if "examenes_programados" not in st.session_state:
     st.session_state.examenes_programados = {}
 if 'configuraciones_grupos' not in st.session_state:
@@ -68,7 +66,7 @@ if 'base_datos_grupos' not in st.session_state:
     st.session_state.base_datos_grupos = cargar_datos_permanentes()
 
 st.title("✈️ Generador de Interfaces GEM - UNAQ")
-st.write("Estructura de Control de Notas Unificada con Recuperación de Datos Forzada.")
+st.write("Estructura de Control de Notas Unificada. Recuperación Automática del Historial.")
 st.write("---")
 
 # BARRA LATERAL
@@ -76,6 +74,7 @@ with st.sidebar:
     st.header("📋 Datos del Curso")
     cuatrimestre = st.text_input("Cuatrimestre actual:", "MAYO-AGOSTO 2026")
     
+    # Si la lectura forzada funcionó, mostrará los grupos directamente
     if st.session_state.base_datos_grupos:
         lista_de_grupos = list(st.session_state.base_datos_grupos.keys())
         grupo_seleccionado = st.selectbox("📂 Seleccione el Grupo para Trabajar:", lista_de_grupos)
@@ -138,69 +137,25 @@ with st.sidebar:
                 st.session_state.base_datos_grupos[grupo_seleccionado] = df_actual
                 guardar_datos_permanentes()
     else:
-        st.info("🔄 Buscando registros en el disco duro del servidor...")
+        st.warning("⚠️ No se detectaron grupos activos en el estado actual de la memoria.")
 
-# VISTA DE CARGA INICIAL
+# INTERFAZ DE PANTALLA PRINCIPAL
 if not st.session_state.base_datos_grupos:
-    st.header("📂 Carga Inicial de Listas (Modo Rescate)")
-    st.info("Si la base de datos se desvinculó por completo en la nube, puedes pegar tu lista de asistencia aquí abajo una vez más para reactivar el grupo.")
-    texto_pegado = st.text_area("📋 Pega aquí todo el contenido de tus listas de la UNAQ:", height=300)
+    st.header("📂 Panel de Recuperación de Datos")
+    st.error("La aplicación no se ha vinculado automáticamente al archivo JSON en el servidor.")
     
-    if st.button("✨ Procesar, Separar y Crear Grupos", type="primary", use_container_width=True):
-        if texto_pegado.strip() != "":
-            lineas = texto_pegado.split("\n")
-            diccionario_grupos = {}
-            carrera_actual, nivel_actual = "", ""
-            
-            for linea in lineas:
-                linea_limpia = linea.strip()
-                if not linea_limpia or len(linea_limpia) < 3: continue
-                
-                match_nivel = re.search(r'(?:A|B|FR)?-?(\d\.\d)', linea_limpia, re.IGNORECASE)
-                if match_nivel: nivel_actual = f"A{match_nivel.group(1)}"
-                
-                match_carrera = re.search(r'\b([A-Z]{3,5})\d{4}\b', linea_limpia, re.IGNORECASE)
-                if match_carrera: carrera_actual = match_carrera.group(1).upper()
-                
-                grupo_compuesto = f"{carrera_actual if carrera_actual else 'CARRERA'} {nivel_actual if nivel_actual else 'NIVEL'}"
-                
-                if any(b in linea_limpia.lower() for b in ["universidad", "aeronáutica", "lista", "matricula", "nombre", "oscar"]): continue
-                
-                linea_limpia = re.sub(r'\b[A-Z]+\d{4}\b', '', linea_limpia, flags=re.IGNORECASE).strip()
-                linea_limpia = re.sub(r'\b\d+\b', '', linea_limpia).strip()
-                
-                if len(linea_limpia.split()) >= 2:
-                    if grupo_compuesto not in diccionario_grupos: diccionario_grupos[grupo_compuesto] = []
-                    diccionario_grupos[grupo_compuesto].append(linea_limpia.upper())
-            
-            for grupo, lista_alumnos in diccionario_grupos.items():
-                lista_final = sorted(list(set(lista_alumnos)))
-                if lista_final:
-                    df_init = pd.DataFrame({'Alumno': lista_final})
-                    for q in range(1, 5): df_init[f"Quiz {q}"] = 0.0
-                    for p in range(1, 3): df_init[f"Proyecto {p}"] = 0.0
-                    df_init['TOTAL QUIZ'] = 0.0
-                    df_init['TOTAL PROYECTO'] = 0.0
-                    df_init['Días Asistidos'] = 32
-                    df_init['Asistencia'] = 10.0
-                    df_init['Firmas Registradas'] = 15
-                    df_init['TOTAL FIRMAS'] = 10.0
-                    df_init['Ser'] = 0.0
-                    df_init['NOTA BASE 10'] = 0.0
-                    df_init['PUNTAJE 30%'] = 0.0
-                    st.session_state.base_datos_grupos[grupo] = df_init
-            guardar_datos_permanentes()
-            st.rerun()
+    # BOTÓN DE ACCIÓN DIRECTA PARA RESCATAR EL ARCHIVO DEL DISCO DURO
+    if st.button("🔄 FORZAR LECTURA Y CARGA DESDE EL DISCO DURO", type="primary", use_container_width=True):
+        st.session_state.base_datos_grupos = cargar_datos_permanentes()
+        if st.session_state.base_datos_grupos:
+            st.success("🎉 ¡Base de datos localizada y restaurada con éxito! Revisa la barra lateral.")
+        else:
+            st.error("No se pudo leer el archivo. Si es la primera vez que abres la app en este servidor limpio, debes iniciar una lista nueva.")
+        st.rerun()
 
 else:
     df_grupo = st.session_state.base_datos_grupos[grupo_seleccionado]
-    cfg = st.session_state.configuraciones_grupos.get(grupo_seleccionado, {
-        'num_quizes': 4, 'n_quiz': 'Quizes', 'w_quiz': 30,
-        'num_proyectos': 2, 'n_proyecto': 'Proyectos', 'w_proyecto': 30,
-        'dias_asistencia': 32, 'n_asistencia': 'Asistencia', 'w_asistencia': 15,
-        'num_firmas': 15, 'n_firmas': 'Firmas / Tareas', 'w_firmas': 15,
-        'n_ser': 'SER / Actitud', 'w_ser': 10
-    })
+    cfg = st.session_state.configuraciones_grupos.get(grupo_seleccionado, {})
     
     tab_tabla, tab_captura_manual, tab_calificador_ocr, tab_reportes, tab_admin = st.tabs([
         "📊 Cuadrícula General", "📝 Método 1: Captura Tradicional Celda por Celda", "📷 Método 2: Calificador Rápido / OCR", "🖨️ Reportes PDF", "🛠️ Administrar Salón"
@@ -407,4 +362,4 @@ else:
 
     with tab_admin:
         st.header("🛠️ Panel de Control - Administrar Salón")
-        # El resto del panel administrativo se conserva...
+        # El resto del panel administrativo se conserva idéntico...
