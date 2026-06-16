@@ -9,10 +9,9 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 
-# Configuración inicial de la interfaz web
-st.set_page_config(page_title="GEM UNAQ - Control de Notas Avanzado", layout="wide")
+# Configuración de la interfaz
+st.set_page_config(page_title="GEM UNAQ - Control de Notas", layout="wide")
 
-# Nombre del archivo permanente en el disco duro del servidor
 ARCHIVO_BD = "base_datos_alumnos.json"
 
 def guardar_datos_permanentes():
@@ -44,17 +43,16 @@ def cargar_datos_permanentes():
             diccionario_final = {}
             for grupo, lista_filas in bloque_grupos.items():
                 df = pd.DataFrame(lista_filas)
-                columnas_obligatorias = ['Alumno', 'TOTAL QUIZ', 'TOTAL PROYECTO', 'TOTAL FIRMAS', 'Asistencia', 'Ser', 'NOTA BASE 10', 'PUNTAJE 30%']
+                columnas_obligatorias = ['Matrícula', 'Alumno', 'Plan', 'TOTAL QUIZ', 'TOTAL PROYECTO', 'TOTAL FIRMAS', 'Asistencia', 'Ser', 'NOTA BASE 10', 'PUNTAJE 30%']
                 for col in columnas_obligatorias:
                     if col not in df.columns:
-                        df[col] = 0.0 if col != 'Alumno' else ''
+                        df[col] = 0.0 if col not in ['Matrícula', 'Alumno', 'Plan'] else ''
                 diccionario_final[grupo] = df
             return diccionario_final
         except:
             return {}
     return {}
 
-# Inicialización segura de variables de estado de sesión
 if "examenes_programados" not in st.session_state:
     st.session_state.examenes_programados = {}
 if 'configuraciones_grupos' not in st.session_state:
@@ -63,16 +61,16 @@ if 'base_datos_grupos' not in st.session_state:
     st.session_state.base_datos_grupos = cargar_datos_permanentes()
 
 st.title("✈️ Generador de Interfaces GEM - UNAQ")
-st.write("Estructura Avanzada de Control de Notas Unificada.")
+st.write("Estructura de Control de Notas con Extractor de Listas de Alta Precisión.")
 st.write("---")
 
-# BARRA LATERAL IZQUIERDA
+# BARRA LATERAL
 with st.sidebar:
     st.header("📋 Datos del Curso")
     cuatrimestre = st.text_input("Cuatrimestre actual:", "MAYO-AGOSTO 2026")
     
     if st.session_state.base_datos_grupos:
-        lista_de_grupos = list(st.session_state.base_datos_grupos.keys())
+        lista_de_grupos = sorted(list(st.session_state.base_datos_grupos.keys()))
         grupo_seleccionado = st.selectbox("📂 Seleccione el Grupo para Trabajar:", lista_de_grupos)
         
         cfg = st.session_state.configuraciones_grupos.get(grupo_seleccionado, {
@@ -84,103 +82,103 @@ with st.sidebar:
         })
         
         st.write("---")
-        with st.expander(f"⚙️ Programar Estructura de: {grupo_seleccionado}"):
-            cfg['n_quiz'] = st.text_input("Nombre Rubro 1:", cfg.get('n_quiz', 'Quizes'))
-            cfg['w_quiz'] = st.number_input("% Quiz", 0, 100, int(cfg.get('w_quiz', 30)), key="wq")
-            cfg['num_quizes'] = st.number_input("¿Cuántos Quizes?", 0, 10, int(cfg.get('num_quizes', 4)), key="nq") if cfg['w_quiz'] > 0 else 0
-                
-            st.markdown("---")
-            cfg['n_proyecto'] = st.text_input("Nombre Rubro 2:", cfg.get('n_proyecto', 'Proyectos'))
-            cfg['w_proyecto'] = st.number_input("% Proy", 0, 100, int(cfg.get('w_proyecto', 30)), key="wp")
-            cfg['num_proyectos'] = st.number_input("¿Cuántos Proyectos?", 0, 10, int(cfg.get('num_proyectos', 2)), key="np") if cfg['w_proyecto'] > 0 else 0
-                
-            st.markdown("---")
-            cfg['n_asistencia'] = st.text_input("Nombre Rubro 3:", cfg.get('n_asistencia', 'Asistencia'))
-            cfg['w_asistencia'] = st.number_input("% Asist", 0, 100, int(cfg.get('w_asistencia', 15)), key="wa")
-            if cfg['w_asistencia'] > 0:
-                cfg['dias_asistencia'] = st.number_input("Días totales de clase:", 1, 100, int(cfg.get('dias_asistencia', 32)), key="da")
-                
-            st.markdown("---")
-            cfg['n_firmas'] = st.text_input("Nombre Rubro 4:", cfg.get('n_firmas', 'Firmas / Tareas'))
-            # CORRECCIÓN DE SINTAXIS CRÍTICA EN LA ASIGNACIÓN DE TUPLA
-            cfg['w_firmas'] = st.number_input("% Firmas", 0, 100, int(cfg.get('w_firmas', 15)), key="wf")
-            cfg['num_firmas'] = st.number_input("Número total de firmas:", 0, 100, int(cfg.get('num_firmas', 15)), key="nf") if cfg['w_firmas'] > 0 else 0
-                
-            st.markdown("---")
-            cfg['n_ser'] = st.text_input("Nombre Rubro 5:", cfg.get('n_ser', 'SER / Actitud'))
-            cfg['w_ser'] = st.number_input("% SER", 0, 100, int(cfg.get('w_ser', 10)), key="ws")
+        with st.expander(f"⚙️ Configurar % de Evaluación"):
+            cfg['w_quiz'] = st.number_input("% Quizes", 0, 100, int(cfg.get('w_quiz', 30)), key="wq")
+            cfg['num_quizes'] = st.number_input("¿Cuántos Quizes?", 1, 10, int(cfg.get('num_quizes', 4)), key="nq") if cfg['w_quiz'] > 0 else 0
+            cfg['w_proyecto'] = st.number_input("% Proyectos", 0, 100, int(cfg.get('w_proyecto', 30)), key="wp")
+            cfg['num_proyectos'] = st.number_input("¿Cuántos Proyectos?", 1, 10, int(cfg.get('num_proyectos', 2)), key="np") if cfg['w_proyecto'] > 0 else 0
+            cfg['w_asistencia'] = st.number_input("% Asistencia", 0, 100, int(cfg.get('w_asistencia', 15)), key="wa")
+            cfg['w_firmas'] = st.number_input("% Firmas/Tareas", 0, 100, int(cfg.get('w_firmas', 15)), key="wf")
+            cfg['w_ser'] = st.number_input("% SER (Actitud)", 0, 100, int(cfg.get('w_ser', 10)), key="ws")
             
-            st.markdown("---")
-            suma_total = cfg['w_quiz'] + cfg['w_proyecto'] + cfg['w_asistencia'] + cfg['w_firmas'] + cfg['w_ser']
-            
-            if suma_total != 100:
-                st.error(f"⚠️ La suma actual es {suma_total}%. Ajuste para que sume 100% exacto.")
+            suma = cfg['w_quiz'] + cfg['w_proyecto'] + cfg['w_asistencia'] + cfg['w_firmas'] + cfg['w_ser']
+            if suma != 100:
+                st.error(f"Suma: {suma}%. Debe ser 100%")
             else:
-                st.success("✅ Distribución válida al 100%.")
                 st.session_state.configuraciones_grupos[grupo_seleccionado] = cfg
-                
-                df_actual = st.session_state.base_datos_grupos[grupo_seleccionado]
-                if cfg['num_quizes'] > 0:
-                    for q in range(1, cfg['num_quizes'] + 1):
-                        if f"Quiz {q}" not in df_actual.columns: df_actual[f"Quiz {q}"] = 0.0
-                if cfg['num_proyectos'] > 0:
-                    for p in range(1, cfg['num_proyectos'] + 1):
-                        if f"Proyecto {p}" not in df_actual.columns: df_actual[f"Proyecto {p}"] = 0.0
-                if cfg['w_firmas'] > 0 and "Firmas Registradas" not in df_actual.columns:
-                    df_actual["Firmas Registradas"] = int(cfg['num_firmas'])
-                if cfg['w_asistencia'] > 0 and "Días Asistidos" not in df_actual.columns:
-                    df_actual["Días Asistidos"] = int(cfg['dias_asistencia'])
-                
-                st.session_state.base_datos_grupos[grupo_seleccionado] = df_actual
                 guardar_datos_permanentes()
-    else:
-        st.info("💡 Esperando lectura de base de datos o entrada de texto...")
 
-# VISTA DE CARGA INICIAL MULTIGRUPO
+# PANEL DE CARGA INICIAL
 if not st.session_state.base_datos_grupos:
-    st.header("📂 Carga Inicial de Listas (Detección Multigrupo)")
-    texto_pegado = st.text_area("📋 Pega aquí todo el contenido de tus listas de la UNAQ:", height=300)
+    st.header("📂 Carga de Listas Escolares de la UNAQ")
+    st.write("Pega aquí abajo el texto completo de Servicios Escolares. El sistema detectará las ingenierías (IAM, IDMA, IECSA) y sus niveles de inglés automáticamente.")
     
-    if st.button("✨ Procesar, Separar y Crear Grupos", type="primary", use_container_width=True):
-        if texto_pegado.strip() != "":
-            lineas = texto_pegado.split("\n")
+    texto_pegado = st.text_area("📋 Control de texto institucional:", height=300)
+    
+    if st.button("✨ Procesar, Clasificar y Generar Grupos Reales", type="primary", use_container_width=True):
+        if texto_pegado.strip():
+            # Unir saltos de línea problemáticos en los códigos de grupo antes de procesar
+            texto_limpio = re.sub(r'(26MA-[^\n]*)-\n\s*', r'\1-', texto_pegado)
+            lineas = [l.strip() for l in texto_limpio.split('\n') if l.strip()]
+            
             diccionario_grupos = {}
             grupo_actual = "GENERAL"
             
-            for linea in lineas:
-                linea_limpia = linea.strip()
-                if not linea_limpia or len(linea_limpia) < 3: continue
+            i = 0
+            while i < len(lineas):
+                linea = lineas[i]
                 
-                # Detectar código de grupo en el texto
-                if "-" in linea_limpia and any(k in linea_limpia for k in ["IAM", "IDMA", "IECSA", "MA-"]):
-                    potencial_grupo = linea_limpia.replace("HERNANDEZ FLORES OSCAR", "").strip()
-                    partes = potencial_grupo.split()
-                    if partes:
-                        grupo_actual = partes[0]
+                # Detectar nivel de inglés o el código de grupo completo
+                if "INGLESING" in linea or "GRUPO DOCENTE" in linea or "26MA-" in linea:
+                    # Buscar patrones de grupos reales de la UNAQ en la línea o las 2 siguientes
+                    for offset in range(0, 3):
+                        if i + offset < len(lineas):
+                            match_g = re.search(r'(26MA-[A-Za-z0-9\.-]+)', lineas[i + offset])
+                            if match_g:
+                                grupo_actual = match_g.group(1).strip().upper()
+                                # Limpiar guiones o cortes raros al final
+                                if grupo_actual.endswith('-'):
+                                    grupo_actual = grupo_actual[:-1]
+                                break
                     if grupo_actual not in diccionario_grupos:
                         diccionario_grupos[grupo_actual] = []
-                    continue
                 
-                # Identificar patrón numérico de fila de alumno
-                match_alumno = re.match(r'^(\d+)\s+(\d+)\s+(.+)$', linea_limpia)
+                # Detectar fila de Alumno: Número Lista + Matrícula
+                match_alumno = re.match(r'^(\d+)\s+(\d{4,6})\s+(.+)$', linea)
                 if match_alumno:
+                    num_lista = match_alumno.group(1)
+                    matricula = match_alumno.group(2)
                     resto = match_alumno.group(3)
-                    match_plan = re.search(r'\s+([A-Z\d]{4,10})$', resto)
-                    if match_plan:
-                        nombre_alumno = resto[:match_plan.start()].strip().upper()
-                    else:
-                        nombre_alumno = resto.strip().upper()
                     
-                    nombre_alumno = re.sub(r'\s+', ' ', nombre_alumno).replace("PLAN ESTUDIOS", "").strip()
-                    if len(nombre_alumno.split()) >= 2:
-                        if grupo_actual not in diccionario_grupos: 
-                            diccionario_grupos[grupo_actual] = []
-                        diccionario_grupos[grupo_actual].append(nombre_alumno)
+                    # Validar si el plan de estudios viene al final del renglón actual
+                    match_plan = re.search(r'\s+([A-Z\d]{5,10})$', resto)
+                    if match_plan:
+                        plan = match_plan.group(1)
+                        nombre = resto[:match_plan.start()].strip()
+                    else:
+                        nombre = resto
+                        plan = "UNAQ2024"
+                        # Si no viene el plan, verificar si el nombre continúa cortado en la línea siguiente
+                        if i + 1 < len(lineas):
+                            linea_sig = lineas[i + 1]
+                            # Si la línea de abajo no empieza con un número de lista y no es cabecera, es parte del nombre
+                            if not re.match(r'^\d+', linea_sig) and "DEPARTAMENTO" not in linea_sig and "INGLES" not in linea_sig:
+                                i += 1 # Consumir línea siguiente
+                                match_plan_sig = re.search(r'\s+([A-Z\d]{5,10})$', linea_sig)
+                                if match_plan_sig:
+                                    plan = match_plan_sig.group(1)
+                                    nombre = f"{nombre} {linea_sig[:match_plan_sig.start()].strip()}"
+                                else:
+                                    nombre = f"{nombre} {linea_sig}"
+                    
+                    # Limpieza final del nombre
+                    nombre_final = re.sub(r'\s+', ' ', nombre).replace("PLAN ESTUDIOS", "").strip().upper()
+                    
+                    if grupo_actual not in diccionario_grupos:
+                        diccionario_grupos[grupo_actual] = []
+                        
+                    diccionario_grupos[grupo_actual].append({
+                        "Matrícula": matricula,
+                        "Alumno": nombre_final,
+                        "Plan": plan
+                    })
+                i += 1
             
-            for grupo, lista_alumnos in diccionario_grupos.items():
-                lista_final = sorted(list(set(lista_alumnos)))
-                if lista_final:
-                    df_init = pd.DataFrame({'Alumno': lista_final})
+            # Generar los DataFrames oficiales con columnas completas
+            for grupo, alumnos in diccionario_grupos.items():
+                if alumnos and grupo != "GENERAL":
+                    df_init = pd.DataFrame(alumnos)
+                    # Forzar todas las columnas requeridas para las calificaciones de Óscar
                     for q in range(1, 5): df_init[f"Quiz {q}"] = 0.0
                     for p in range(1, 3): df_init[f"Proyecto {p}"] = 0.0
                     df_init['TOTAL QUIZ'] = 0.0
@@ -192,10 +190,13 @@ if not st.session_state.base_datos_grupos:
                     df_init['Ser'] = 0.0
                     df_init['NOTA BASE 10'] = 0.0
                     df_init['PUNTAJE 30%'] = 0.0
+                    
                     st.session_state.base_datos_grupos[grupo] = df_init
+            
             guardar_datos_permanentes()
             st.rerun()
 
+# SI YA HAY DATOS PROCESADOS: DESPLEGAR INTERFAZ DE CAPTURA
 else:
     df_grupo = st.session_state.base_datos_grupos[grupo_seleccionado]
     cfg = st.session_state.configuraciones_grupos.get(grupo_seleccionado, {
@@ -206,194 +207,133 @@ else:
         'n_ser': 'SER / Actitud', 'w_ser': 10
     })
     
-    # 💾 BOTÓN DE RESPALDO DIRECTO EN LA INTERFAZ
+    st.success(f"📋 Grupo seleccionado de forma correcta: {grupo_seleccionado}")
+    
+    # RESPALDO DE RESPUESTA INMEDIATA
     csv_buffer = io.StringIO()
     df_grupo.to_csv(csv_buffer, index=False)
     st.download_button(
-        label="💾 DESCARGAR COPIA DE SEGURIDAD LOCAL DE ESTE GRUPO (.CSV)",
+        label="💾 RESPALDAR ESTE GRUPO EN MI COMPUTADORA (EVITA PÉRDIDAS)",
         data=csv_buffer.getvalue(),
-        file_name=f"Respaldo_{grupo_seleccionado}.csv",
+        file_name=f"Respaldo_Notas_{grupo_seleccionado}.csv",
         mime="text/csv",
         use_container_width=True
     )
     
-    tab_tabla, tab_captura_manual, tab_calificador_ocr, tab_reportes, tab_admin = st.tabs([
-        "📊 Cuadrícula General", "📝 Captura Tradicional", "📷 Calificador / Rúbricas", "🖨️ Reportes PDF", "🛠️ Administrar Salón"
+    tab_tabla, tab_captura, tab_delf, tab_pdf, tab_borrar = st.tabs([
+        "📊 Cuadrícula General", "📝 Captura Rápida", "📷 Asistente de Rúbricas DELF", "🖨️ Exportar Acta PDF", "🛠️ Administrar Salón"
     ])
     
     with tab_tabla:
-        st.header(f"📊 Concentrado General - {grupo_seleccionado}")
-        cols_mostrar = ['Alumno']
-        if cfg.get('w_quiz', 30) > 0:
-            for q in range(1, cfg.get('num_quizes', 4) + 1): cols_mostrar.append(f"Quiz {q}")
-            cols_mostrar.append('TOTAL QUIZ')
-        if cfg.get('w_proyecto', 30) > 0:
-            for p in range(1, cfg.get('num_proyectos', 2) + 1): cols_mostrar.append(f"Proyecto {p}")
-            cols_mostrar.append('TOTAL PROYECTO')
-        if cfg.get('w_asistencia', 15) > 0: cols_mostrar.extend(['Días Asistidos', 'Asistencia'])
-        if cfg.get('w_firmas', 15) > 0: cols_mostrar.extend(['Firmas Registradas', 'TOTAL FIRMAS'])
-        if cfg.get('w_ser', 10) > 0: cols_mostrar.append('Ser')
-        cols_mostrar.extend(['NOTA BASE 10', 'PUNTAJE 30%'])
+        st.subheader("Concentrado de Calificaciones")
+        st.write("Usa la pestaña 'Captura Rápida' para modificar las notas y actualizar los promedios.")
+        st.dataframe(df_grupo, use_container_width=True, hide_index=True)
         
-        cols_finales = [c for c in cols_mostrar if c in df_grupo.columns]
-        st.dataframe(df_grupo[cols_finales], use_container_width=True, hide_index=True)
+    with tab_captura:
+        st.subheader("📝 Formulario de Registro")
+        alumno_sel = st.selectbox("👤 Selecciona al Estudiante:", df_grupo['Alumno'].tolist())
+        idx = df_grupo[df_grupo['Alumno'] == alumno_sel].index[0]
+        
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.markdown(f"### 📝 {cfg['n_quiz']}")
+            q1 = st.number_input("Quiz 1:", 0.0, 10.0, float(df_grupo.at[idx, "Quiz 1"]))
+            q2 = st.number_input("Quiz 2:", 0.0, 10.0, float(df_grupo.at[idx, "Quiz 2"]))
+            q3 = st.number_input("Quiz 3:", 0.0, 10.0, float(df_grupo.at[idx, "Quiz 3"]))
+            q4 = st.number_input("Quiz 4:", 0.0, 10.0, float(df_grupo.at[idx, "Quiz 4"]))
+        with c2:
+            st.markdown(f"### 🏗️ {cfg['n_proyecto']}")
+            p1 = st.number_input("Proyecto 1:", 0.0, 10.0, float(df_grupo.at[idx, "Proyecto 1"]))
+            p2 = st.number_input("Proyecto 2:", 0.0, 10.0, float(df_grupo.at[idx, "Proyecto 2"]))
+        with c3:
+            st.markdown("### 📋 Asistencia y Tareas")
+            d_asist = st.number_input("Días Asistidos (Máx 32):", 0, 32, int(df_grupo.at[idx, "Días Asistidos"]))
+            f_firmas = st.number_input("Firmas Registradas (Máx 15):", 0, 15, int(df_grupo.at[idx, "Firmas Registradas"]))
+            v_ser = st.number_input("Nota SER (Actitud):", 0.0, 10.0, float(df_grupo.at[idx, "Ser"]))
+            
+        if st.button("💾 Guardar y Calcular Notas Automáticamente", type="primary", use_container_width=True):
+            # Inyectar cambios manuales
+            df_grupo.at[idx, "Quiz 1"] = q1
+            df_grupo.at[idx, "Quiz 2"] = q2
+            df_grupo.at[idx, "Quiz 3"] = q3
+            df_grupo.at[idx, "Quiz 4"] = q4
+            df_grupo.at[idx, "Proyecto 1"] = p1
+            df_grupo.at[idx, "Proyecto 2"] = p2
+            df_grupo.at[idx, "Días Asistidos"] = d_asist
+            df_grupo.at[idx, "Firmas Registradas"] = f_firmas
+            df_grupo.at[idx, "Ser"] = v_ser
+            
+            # Cálculos aritméticos ponderados automáticos
+            t_q = round((q1 + q2 + q3 + q4) / 4.0, 2)
+            t_p = round((p1 + p2) / 2.0, 2)
+            t_as = round((d_asist / 32.0) * 10.0, 2)
+            t_fi = round((f_firmas / 15.0) * 10.0, 2)
+            
+            df_grupo.at[idx, "TOTAL QUIZ"] = t_q
+            df_grupo.at[idx, "TOTAL PROYECTO"] = t_p
+            df_grupo.at[idx, "Asistencia"] = t_as
+            df_grupo.at[idx, "TOTAL FIRMAS"] = t_fi
+            
+            # Aplicar pesos configurados
+            nota_b10 = (t_q * (cfg['w_quiz']/100)) + (t_p * (cfg['w_proyecto']/100)) + (t_as * (cfg['w_asistencia']/100)) + (t_fi * (cfg['w_firmas']/100)) + (v_ser * (cfg['w_ser']/100))
+            df_grupo.at[idx, "NOTA BASE 10"] = round(nota_b10, 1)
+            df_grupo.at[idx, "PUNTAJE 30%"] = round(nota_b10 * 0.3, 2)
+            
+            st.session_state.base_datos_grupos[grupo_seleccionado] = df_grupo
+            guardar_datos_permanentes()
+            st.success(f"🎉 Notas de {alumno_sel} actualizadas.")
+            st.rerun()
 
-    with tab_captura_manual:
-        st.subheader("📝 Captura e Inyección Tradicional de Notas")
-        if not df_grupo.empty:
-            alumno_manual = st.selectbox("👤 Selecciona al alumno:", df_grupo['Alumno'].tolist(), key="al_man")
-            idx_m = df_grupo[df_grupo['Alumno'] == alumno_manual].index[0]
+    with tab_delf:
+        st.subheader("📷 Co-Piloto de Rúbricas y Evaluaciones Especiales")
+        al_ocr = st.selectbox("Alumno para rúbrica:", df_grupo['Alumno'].tolist(), key="d_al")
+        idx_o = df_grupo[df_grupo['Alumno'] == al_ocr].index[0]
+        ex_ocr = st.selectbox("Destino de la nota calculada:", ["Quiz 1", "Quiz 2", "Quiz 3", "Quiz 4", "Proyecto 1", "Proyecto 2"])
+        
+        co1, co2 = st.columns(2)
+        with co1:
+            st.markdown("##### 📊 Evaluador Proporcional DELF")
+            comp = st.number_input("Aciertos Comprensión (Máx 20):", 0, 20, 15)
+            r1 = st.slider("Réalisation de la tâche (0-3):", 0.0, 3.0, 2.5, 0.5)
+            r2 = st.slider("Cohérence (0-2):", 0.0, 2.0, 1.5, 0.5)
+            r3 = st.slider("Lexique (0-2):", 0.0, 2.0, 1.5, 0.5)
+            r4 = st.slider("Morphosyntaxe (0-3):", 0.0, 3.0, 2.0, 0.5)
             
-            col1, col2, col3 = st.columns(3)
-            valores_q = []
-            with col1:
-                if cfg.get('w_quiz', 0) > 0:
-                    st.markdown(f"### 📝 {cfg.get('n_quiz', 'Quizes')}")
-                    for q in range(1, cfg.get('num_quizes', 4) + 1):
-                        col_n = f"Quiz {q}"
-                        v_def = float(df_grupo.at[idx_m, col_n]) if col_n in df_grupo.columns else 0.0
-                        valores_q.append((col_n, st.number_input(f"{col_n} (0-10)", 0.0, 10.0, v_def, key=f"mq_{q}")))
-            
-            valores_p = []
-            with col2:
-                if cfg.get('w_proyecto', 0) > 0:
-                    st.markdown(f"### 🏗️ {cfg.get('n_proyecto', 'Proyectos')}")
-                    for p in range(1, cfg.get('num_proyectos', 2) + 1):
-                        col_n = f"Proyecto {p}"
-                        v_def = float(df_grupo.at[idx_m, col_n]) if col_n in df_grupo.columns else 0.0
-                        valores_p.append((col_n, st.number_input(f"{col_n} (0-10)", 0.0, 10.0, v_def, key=f"mp_{p}")))
-            
-            with col3:
-                st.markdown("### 📋 Asistencia, Firmas y Rasgos")
-                d_asist = st.number_input("Días asistidos:", 0, int(cfg.get('dias_asistencia', 32)), int(df_grupo.at[idx_m, 'Días Asistidos'])) if cfg.get('w_asistencia', 0) > 0 else 32
-                f_regist = st.number_input("Firmas obtenidas:", 0, int(cfg.get('num_firmas', 15)), int(df_grupo.at[idx_m, 'Firmas Registradas'])) if cfg.get('w_firmas', 0) > 0 else 15
-                v_ser = st.number_input("Nota SER:", 0.0, 10.0, float(df_grupo.at[idx_m, 'Ser'])) if cfg.get('w_ser', 0) > 0 else 0.0
-                
-            if st.button("💾 Guardar Cambios Tradicionales", type="primary", use_container_width=True):
-                for col_n, val in valores_q: df_grupo.at[idx_m, col_n] = val
-                for col_n, val in valores_p: df_grupo.at[idx_m, col_n] = val
-                
-                t_q = (sum(v for _, v in valores_q) / cfg.get('num_quizes', 4)) if valores_q else 0.0
-                t_p = (sum(v for _, v in valores_p) / cfg.get('num_proyectos', 2)) if valores_p else 0.0
-                
-                df_grupo.at[idx_m, 'TOTAL QUIZ'] = round(t_q, 2)
-                df_grupo.at[idx_m, 'TOTAL PROYECTO'] = round(t_p, 2)
-                df_grupo.at[idx_m, 'Días Asistidos'] = d_asist
-                df_grupo.at[idx_m, 'Asistencia'] = round((d_asist / cfg.get('dias_asistencia', 32)) * 10.0, 2)
-                df_grupo.at[idx_m, 'Firmas Registradas'] = f_regist
-                df_grupo.at[idx_m, 'TOTAL FIRMAS'] = round((f_regist / cfg.get('num_firmas', 15)) * 10.0, 2)
-                df_grupo.at[idx_m, 'Ser'] = v_ser
-                
-                n_b10 = (t_q * (cfg.get('w_quiz', 0)/100)) + (t_p * (cfg.get('w_proyecto', 0)/100)) + (df_grupo.at[idx_m, 'Asistencia'] * (cfg.get('w_asistencia', 0)/100)) + (df_grupo.at[idx_m, 'TOTAL FIRMAS'] * (cfg.get('w_firmas', 0)/100)) + (v_ser * (cfg.get('w_ser', 0)/100))
-                df_grupo.at[idx_m, 'NOTA BASE 10'] = round(n_b10, 1)
-                df_grupo.at[idx_m, 'PUNTAJE 30%'] = round(n_b10 * 0.3, 2)
-                
+            calculada = round(((comp + r1 + r2 + r3 + r4) / 30.0) * 10.0, 1)
+            st.metric("Nota Resultante (Base 10):", f"{calculada} / 10.0")
+        with co2:
+            st.camera_input("Capturar evidencia física (Opcional):")
+            if st.button("✨ Registrar Nota DELF en la Tabla", use_container_width=True, type="primary"):
+                df_grupo.at[idx_o, ex_ocr] = calculada
                 st.session_state.base_datos_grupos[grupo_seleccionado] = df_grupo
                 guardar_datos_permanentes()
-                st.success("🎉 Datos guardados tradicionalmente.")
-                st.rerun()
+                st.success("Nota registrada. Ve a 'Captura Rápida' y dale Guardar para recalcular el promedio final.")
 
-    with tab_calificador_ocr:
-        st.header("📷 Método 2: Asistente de Rúbricas e Integración OCR")
-        sub_c1, sub_c2 = st.tabs(["📷 Procesar Evaluación", "⚙️ Configurar Parámetros"])
-        
-        with sub_c2:
-            opciones_ev = [f"Quiz {q}" for q in range(1, cfg.get('num_quizes', 4) + 1)] + [f"Proyecto {p}" for p in range(1, cfg.get('num_proyectos', 2) + 1)]
-            if opciones_ev:
-                ex_sel = st.selectbox("Selecciona la evaluación a parametrizar:", opciones_ev)
-                if ex_sel not in st.session_state.examenes_programados:
-                    st.session_state.examenes_programados[ex_sel] = {"claves": "1-F, 2-D, 3-B", "max_c": 6.0, "rubrica": "Criterios"}
-                
-                st.session_state.examenes_programados[ex_sel]["claves"] = st.text_area("Clave de respuestas cerradas:", st.session_state.examenes_programados[ex_sel]["claves"])
-                st.session_state.examenes_programados[ex_sel]["max_c"] = st.number_input("Puntaje máximo:", 0.0, 10.0, float(st.session_state.examenes_programados[ex_sel]["max_c"]))
-                st.session_state.examenes_programados[ex_sel]["rubrica"] = st.text_area("Descripción de Rúbrica Abierta:", st.session_state.examenes_programados[ex_sel]["rubrica"])
-                
-                if st.button("💾 Guardar Configuración del Examen"):
-                    guardar_datos_permanentes()
-                    st.success("✅ Examen parametrizado.")
-            else:
-                st.caption("No hay rubros activos.")
-
-        with sub_c1:
-            if not df_grupo.empty and st.session_state.examenes_programados:
-                col_o1, col_o2 = st.columns(2)
-                with col_o1:
-                    al_ocr = st.selectbox("Alumno a evaluar con Asistente:", df_grupo['Alumno'].tolist())
-                    idx_o = df_grupo[df_grupo['Alumno'] == al_ocr].index[0]
-                    ex_ocr = st.selectbox("Destino de la nota generada:", list(st.session_state.examenes_programados.keys()))
-                    
-                    st.markdown("### 📊 Calculadora de Rúbrica DELF")
-                    pts_c = st.number_input("Aciertos Comprensión (Max 20):", 0, 20, 16)
-                    r1 = st.slider("Réalisation de la tâche (Max 3.0):", 0.0, 3.0, 2.0, 0.5)
-                    r2 = st.slider("Cohérence et cohésion (Max 2.0):", 0.0, 2.0, 1.5, 0.5)
-                    r3 = st.slider("Lexique (Max 2.0):", 0.0, 2.0, 1.5, 0.5)
-                    r4 = st.slider("Morphosyntaxe (Max 3.0):", 0.0, 3.0, 2.0, 0.5)
-                    
-                    nota_c_10 = ((pts_c + r1 + r2 + r3 + r4) / 30.0) * 10.0
-                    st.metric("Nota Calculada (Base 10)", f"{round(nota_c_10, 1)} / 10")
-                    
-                with col_o2:
-                    st.markdown("### 📷 Captura Co-Piloto")
-                    f_cam = st.camera_input("Enfoca el examen:")
-                    
-                    if st.button("💾 Validar e Inyectar Nota del Asistente", type="primary", use_container_width=True):
-                        df_grupo.at[idx_o, ex_ocr] = round(nota_c_10, 1)
-                        if "Quiz" in ex_ocr:
-                            q_sum = sum(float(df_grupo.at[idx_o, f"Quiz {q}"]) for q in range(1, cfg.get('num_quizes', 4) + 1))
-                            df_grupo.at[idx_o, 'TOTAL QUIZ'] = round(q_sum / cfg.get('num_quizes', 4), 2)
-                        elif "Proyecto" in ex_ocr:
-                            p_sum = sum(float(df_grupo.at[idx_o, f"Proyecto {p}"]) for p in range(1, cfg.get('num_proyectos', 2) + 1))
-                            df_grupo.at[idx_o, 'TOTAL PROYECTO'] = round(p_sum / cfg.get('num_proyectos', 2), 2)
-                        
-                        n_b10 = (float(df_grupo.at[idx_o, 'TOTAL QUIZ']) * (cfg.get('w_quiz', 0)/100)) + (float(df_grupo.at[idx_o, 'TOTAL PROYECTO']) * (cfg.get('w_proyecto', 0)/100)) + (float(df_grupo.at[idx_o, 'Asistencia']) * (cfg.get('w_asistencia', 0)/100)) + (float(df_grupo.at[idx_o, 'TOTAL FIRMAS']) * (cfg.get('w_firmas', 0)/100)) + (float(df_grupo.at[idx_o, 'Ser']) * (cfg.get('w_ser', 0)/100))
-                        df_grupo.at[idx_o, 'NOTA BASE 10'] = round(n_b10, 1)
-                        df_grupo.at[idx_o, 'PUNTAJE 30%'] = round(n_b10 * 0.3, 2)
-                        
-                        st.session_state.base_datos_grupos[grupo_seleccionado] = df_grupo
-                        guardar_datos_permanentes()
-                        st.success("🎉 Nota inyectada con éxito.")
-                        st.rerun()
-
-    with tab_reportes:
-        st.subheader("🖨️ Exportar Actas PDF")
-        def generar_pdf_grupo(df, g_name, cuatri, c):
+    with tab_pdf:
+        st.subheader("🖨️ Generación de Reportes PDF")
+        def generar_acta_pdf(df, g_name, cuatri):
             buffer = io.BytesIO()
             doc = SimpleDocTemplate(buffer, pagesize=letter)
             story = []
             styles = getSampleStyleSheet()
-            title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontSize=14, leading=16, textColor=colors.HexColor("#0B3C5D"), alignment=1)
-            meta_style = ParagraphStyle('MetaStyle', parent=styles['Normal'], fontSize=9, leading=11, alignment=1)
-            story.append(Paragraph(f"UNIVERSIDAD AERONÁUTICA EN QUERÉTARO", title_style))
+            title = ParagraphStyle('T', parent=styles['Heading1'], fontSize=14, leading=16, textColor=colors.HexColor("#0B3C5D"), alignment=1)
+            meta = ParagraphStyle('M', parent=styles['Normal'], fontSize=9, leading=11, alignment=1)
+            story.append(Paragraph("UNIVERSIDAD AERONÁUTICA EN QUERÉTARO", title))
             story.append(Spacer(1, 6))
-            story.append(Paragraph(f"ACTA DE EVALUACIÓN CONTINUA (30%) - GRUPO: {g_name} | {cuatri}", meta_style))
-            story.append(Spacer(1, 12))
+            story.append(Paragraph(f"ACTA DE EVALUACIÓN CONTINUA (30%) - GRUPO: {g_name} | {cuatri}", meta))
+            story.append(Spacer(1, 15))
             
-            headers = ["Alumno"]
-            if c.get('w_quiz', 0) > 0: headers.append("Quiz")
-            if c.get('w_proyecto', 0) > 0: headers.append("Proy")
-            if c.get('w_asistencia', 0) > 0: headers.append("Asist")
-            if c.get('w_firmas', 0) > 0: headers.append("Firmas")
-            headers.extend(["Nota /10", "30%"])
-            
+            headers = ["Matrícula", "Alumno", "Plan", "Nota /10", "Puntaje 30%"]
             data = [headers]
-            for _, row in df.iterrows():
-                fila = [row['Alumno'][:18]]
-                if c.get('w_quiz', 0) > 0: fila.append(str(row['TOTAL QUIZ']))
-                if c.get('w_proyecto', 0) > 0: fila.append(str(row['TOTAL PROYECTO']))
-                if c.get('w_asistencia', 0) > 0: fila.append(str(row['Asistencia']))
-                if c.get('w_firmas', 0) > 0: fila.append(str(row['TOTAL FIRMAS']))
-                fila.extend([str(row['NOTA BASE 10']), str(row['PUNTAJE 30%'])])
-                data.append(fila)
+            for _, r in df.iterrows():
+                data.append([str(r['Matrícula']), r['Alumno'][:20], str(r['Plan']), str(r['NOTA BASE 10']), str(r['PUNTAJE 30%'])])
                 
             t = Table(data)
             t.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#0B3C5D")),
                 ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
                 ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-                ('ALIGN', (0,0), (0,-1), 'LEFT'),
-                ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-                ('BOTTOMPADDING', (0,0), (-1,0), 4),
-                ('BACKGROUND', (0,1), (-1,-1), colors.HexColor("#F5F7FA")),
+                ('ALIGN', (1,1), (1,-1), 'LEFT'),
                 ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
                 ('FONTSIZE', (0,0), (-1,-1), 8)
             ]))
@@ -402,12 +342,13 @@ else:
             buffer.seek(0)
             return buffer
 
-        if not df_grupo.empty:
-            pdf_data = generar_pdf_grupo(df_grupo, grupo_seleccionado, cuatrimestre, cfg)
-            st.download_button(label=f"📥 DESCARGAR REPORTE AL 30% EN PDF", data=pdf_data, file_name=f"Acta_30_{grupo_seleccionado}.pdf", mime="application/pdf", use_container_width=True)
+        if st.button("📥 Generar e Imprimir PDF del Grupo", use_container_width=True):
+            pdf_data = generar_acta_pdf(df_grupo, grupo_seleccionado, cuatrimestre)
+            st.download_button("Descargar Acta PDF", pdf_data, file_name=f"Acta_30_{grupo_seleccionado}.pdf", mime="application/pdf")
 
-    with tab_admin:
-        st.header("🛠️ Panel de Control - Administrar Salón")
-        if st.button("⚠️ Reiniciar memoria del servidor (Volver a Pantalla de Carga Inicial)", type="destructive", use_container_width=True):
+    with tab_borrar:
+        if st.button("⚠️ ELIMINAR TODAS LAS LISTAS Y VOLVER A CARGAR TEXTO", type="destructive", use_container_width=True):
             st.session_state.base_datos_grupos = {}
+            if os.path.exists(ARCHIVO_BD):
+                os.remove(ARCHIVO_BD)
             st.rerun()
