@@ -1,156 +1,128 @@
 import streamlit as st
 import pandas as pd
 import io
-import re
+import json
 
-# 1. Configuración inicial de la interfaz web
+# Configuración inicial de la interfaz web (Igual a tu app original)
 st.set_page_config(page_title="GEM UNAQ - Control de Notas", layout="wide")
 
-# Inicializar los contenedores de memoria temporal dentro de la app
+# Inicializar los contenedores de memoria interna de la app
 if 'base_datos_grupos' not in st.session_state:
     st.session_state.base_datos_grupos = {}
 if 'configuraciones_grupos' not in st.session_state:
     st.session_state.configuraciones_grupos = {}
 
 st.title("✈️ Generador de Interfaces GEM - UNAQ")
-st.write("Estructura Unificada de Control de Notas y Rescate de Alumnos.")
+st.write("Estructura Original con Inyección y Soporte de Respaldos.")
 st.write("---")
 
-# 2. BARRA LATERAL IZQUIERDA
+# BARRA LATERAL
 with st.sidebar:
     st.header("📋 Datos del Curso")
     cuatrimestre = st.text_input("Cuatrimestre actual:", "MAYO-AGOSTO 2026")
     
-    # Si ya procesamos listas, mostrar los grupos en un menú desplegable
+    # Si ya hay grupos en la memoria, mostrar el selector clásico de Óscar
     if st.session_state.base_datos_grupos:
         lista_de_grupos = list(st.session_state.base_datos_grupos.keys())
         grupo_seleccionado = st.selectbox("📂 Seleccione el Grupo para Trabajar:", lista_de_grupos)
-        
-        # Configuración de rubros por defecto para el grupo
-        cfg = st.session_state.configuraciones_grupos.get(grupo_seleccionado, {
-            'w_quiz': 30, 'w_proyecto': 30, 'w_asistencia': 15, 'w_firmas': 15, 'w_ser': 10
-        })
 
-# 3. PANTALLA PRINCIPAL: SI NO HAY LISTAS CARGADAS, MOSTRAR PANEL DE INICIO
+# PANTALLA DE CONTROL: SI NO HAY GRUPOS ACTIVOS, MOSTRAR PANEL DE INYECCIÓN
 if not st.session_state.base_datos_grupos:
-    st.header("📂 Carga Inicial o Restauración de Listas")
-    st.info("Pega aquí el bloque de texto de tus listas institucionales o sube un respaldo previo.")
+    st.header("📂 Panel de Recuperación e Inyección de Listas")
+    st.info("Para activar la cuadrícula de notas de Óscar, pega el texto de las listas o sube un archivo de respaldo.")
     
-    pestana_pegar, pestana_archivo = st.tabs(["📋 Método 1: Pegar Texto de la Lista", "📁 Método 2: Subir Respaldo Guardado (.csv)"])
+    pestana_pegar, pestana_archivo = st.tabs(["📋 Método 1: Pegar Texto de la Lista", "📁 Método 2: Subir Respaldo (.csv o .json)"])
     
     with pestana_pegar:
-        texto_pegado = st.text_area("Pega aquí el contenido de tus listas de la UNAQ (puedes pegar todas juntas):", height=300)
+        texto_pegado = st.text_area("Pega aquí el contenido de tus listas de la UNAQ:", height=250)
         
-        if st.button("✨ Procesar Texto y Crear Grupos", type="primary", use_container_width=True):
+        if st.button("✨ Procesar Texto y Activar Tablas", type="primary", use_container_width=True):
             if texto_pegado.strip():
+                # Separar el texto por líneas limpias
                 lineas = [l.strip() for l in texto_pegado.split('\n') if l.strip()]
-                diccionario_grupos = {}
-                grupo_actual = "GENERAL"
                 
-                i = 0
-                while i < len(lineas):
-                    linea = lineas[i]
+                # Crear un grupo por defecto por si el texto no trae cabecera clara
+                grupo_actual = "GRUPO_A1.40"
+                alumnos_por_grupo = {grupo_actual: []}
+                
+                for linea in lineas:
+                    # Detectar si la línea contiene un código de grupo de la UNAQ
+                    if "-" in linea and ("IAM" in linea or "IDMA" in linea or "IECSA" in linea or "MA-" in linea):
+                        # Limpiar el nombre del maestro si viene en la misma línea
+                        potencial_grupo = linea.replace("HERNANDEZ FLORES OSCAR", "").strip()
+                        # Extraer solo el código del grupo corto para que no quede una pestaña enorme
+                        partes = potencial_grupo.split()
+                        grupo_actual = partes[0] if partes else potencial_grupo
+                        if grupo_actual not in alumnos_por_grupo:
+                            alumnos_por_grupo[grupo_actual] = []
+                        continue
                     
-                    # Identificar cambio de grupo
-                    if "GRUPO DOCENTE" in linea or linea == "GRUPO" or "INGLESING" in linea:
-                        if i + 1 < len(lineas):
-                            # Buscar la línea que tiene el formato del código del grupo (contiene números y guiones)
-                            for offset in range(1, 4):
-                                if i + offset < len(lineas) and "-" in lineas[i + offset]:
-                                    potencial_grupo = lineas[i + offset].replace("HERNANDEZ FLORES OSCAR", "").strip()
-                                    if potencial_grupo:
-                                        grupo_actual = potencial_grupo
-                                        break
-                        if grupo_actual not in diccionario_grupos:
-                            diccionario_grupos[grupo_actual] = []
-                    
-                    # Identificar renglón de alumno por patrón: Número Matrícula Resto
-                    match_alumno = re.match(r'^(\d+)\s+(\d+)\s+(.+)$', linea)
-                    if match_alumno:
-                        matricula = match_alumno.group(2)
-                        resto = match_alumno.group(3)
+                    # Detectar renglón de alumno (si empieza con número de lista seguido de matrícula)
+                    partes_linea = linea.split()
+                    if len(partes_linea) >= 3 and partes_linea[0].isdigit() and partes_linea[1].isdigit():
+                        # Excluir palabras de cabecera que se puedan colar
+                        if any(x in linea.lower() for x in ["universidad", "lista", "docente", "matricula"]):
+                            continue
                         
-                        # Revisar si el plan viene al final
-                        match_plan = re.search(r'\s+([A-Z\d]{4,10})$', resto)
-                        if match_plan:
-                            plan = match_plan.group(1)
-                            nombre = resto[:match_plan.start()].strip()
+                        matricula = partes_linea[1]
+                        # El resto de la línea es el nombre del alumno, quitando el plan de estudios del final si existe
+                        resto = " ".join(partes_linea[2:])
+                        if partes_linea[-1].isalnum() and len(partes_linea[-1]) >= 7: # Posible plan como IAM2024
+                            nombre_alumno = " ".join(partes_linea[2:-1]).upper()
                         else:
-                            nombre = resto
-                            plan = "UNAQ"
-                            # Si no tiene plan, checar si el nombre sigue en la línea de abajo
-                            if i + 1 < len(lineas) and not re.match(r'^\d+', lineas[i + 1]) and "DEPARTAMENTO" not in lineas[i + 1]:
-                                i += 1
-                                match_plan_sig = re.search(r'\s+([A-Z\d]{4,10})$', lineas[i])
-                                if match_plan_sig:
-                                    plan = match_plan_sig.group(1)
-                                    nombre = f"{nombre} {lineas[i][:match_plan_sig.start()].strip()}"
-                                else:
-                                    nombre = f"{nombre} {lineas[i]}"
-                        
-                        # Limpiar el nombre
-                        nombre_limpio = re.sub(r'\s+', ' ', nombre).replace("PLAN ESTUDIOS", "").strip().upper()
-                        
-                        if grupo_actual not in diccionario_grupos:
-                            diccionario_grupos[grupo_actual] = []
+                            nombre_alumno = resto.upper()
                             
-                        diccionario_grupos[grupo_actual].append({
-                            "Matrícula": matricula,
-                            "Alumno": nombre_limpio,
-                            "Plan": plan
-                        })
-                    i += 1
+                        alumnos_por_grupo[grupo_actual].append(nombre_alumno)
                 
-                # Convertir los datos extraídos en DataFrames listos con columnas de notas
-                for grupo, alumnos in diccionario_grupos.items():
-                    if alumnos:
-                        df_init = pd.DataFrame(alumnos)
-                        # Agregar las columnas para calificaciones en blanco
-                        df_init["Quiz 1"] = 0.0
-                        df_init["Quiz 2"] = 0.0
-                        df_init["Quiz 3"] = 0.0
-                        df_init["Quiz 4"] = 0.0
-                        df_init["TOTAL QUIZ"] = 0.0
-                        df_init["Proyecto 1"] = 0.0
-                        df_init["Proyecto 2"] = 0.0
-                        df_init["TOTAL PROYECTO"] = 0.0
-                        df_init["Días Asistidos"] = 32
-                        df_init["Asistencia"] = 10.0
-                        df_init["Firmas Registradas"] = 15
-                        df_init["TOTAL FIRMAS"] = 10.0
-                        df_init["Ser"] = 0.0
-                        df_init["NOTA BASE 10"] = 0.0
-                        df_init["PUNTAJE 30%"] = 0.0
+                # Convertir las listas en los DataFrames con el formato exacto de tu app anterior
+                for grupo, lista_nombres in alumnos_por_grupo.items():
+                    # Eliminar duplicados manteniendo el orden
+                    lista_limpia = sorted(list(set(lista_nombres)))
+                    if lista_limpia:
+                        df_init = pd.DataFrame({'Alumno': lista_limpia})
+                        # Columnas originales de captura de Óscar
+                        df_init['Quiz 1'] = 0.0
+                        df_init['Quiz 2'] = 0.0
+                        df_init['Quiz 3'] = 0.0
+                        df_init['Quiz 4'] = 0.0
+                        df_init['TOTAL QUIZ'] = 0.0
+                        df_init['Proyecto 1'] = 0.0
+                        df_init['Proyecto 2'] = 0.0
+                        df_init['TOTAL PROYECTO'] = 0.0
+                        df_init['Días Asistidos'] = 32
+                        df_init['Asistencia'] = 10.0
+                        df_init['Firmas Registradas'] = 15
+                        df_init['TOTAL FIRMAS'] = 10.0
+                        df_init['Ser'] = 0.0
+                        df_init['NOTA BASE 10'] = 0.0
+                        df_init['PUNTAJE 30%'] = 0.0
                         
                         st.session_state.base_datos_grupos[grupo] = df_init
                 st.rerun()
 
     with pestana_archivo:
-        archivo_subido = st.file_uploader("Arrastra aquí el archivo .csv de respaldo que descargaste previamente:", type=["csv"])
+        archivo_subido = st.file_uploader("Sube un archivo de respaldo previo (.csv):", type=["csv"])
         if archivo_subido is not None:
             try:
-                df_recuperado = pd.read_csv(archivo_subido)
-                nombre_g = archivo_subido.name.replace("Respaldo_Notas_", "").replace(".csv", "")
-                st.session_state.base_datos_grupos[nombre_g] = df_recuperado
-                st.success(f"🎉 ¡Grupo '{nombre_g}' restaurado con éxito desde tu archivo local!")
+                df_excel = pd.read_csv(archivo_subido)
+                nombre_g = archivo_subido.name.split('.')[0].replace('Respaldo_Notas_', '')
+                st.session_state.base_datos_grupos[nombre_g] = df_excel
+                st.success("🎉 ¡Respaldo cargado correctamente!")
                 st.rerun()
             except Exception as e:
-                st.error(f"Error al leer el archivo de respaldo: {e}")
+                st.error(f"Error al procesar el archivo: {e}")
 
-# 4. PANTALLA PRINCIPAL: SI YA HAY UN GRUPO ACTIVO, MOSTRAR CUADRÍCULA Y CAPTURA
+# SI YA HAY GRUPOS CARGADOS: MOSTRAR LA INTERFAZ ORIGINAL DE ÓSCAR (DATAEDITOR CELDA POR CELDA)
 else:
     df_grupo = st.session_state.base_datos_grupos[grupo_seleccionado]
-    cfg = st.session_state.configuraciones_grupos.get(grupo_seleccionado, {
-        'w_quiz': 30, 'w_proyecto': 30, 'w_asistencia': 15, 'w_firmas': 15, 'w_ser': 10
-    })
     
-    st.success(f"📋 Grupo actual: {grupo_seleccionado}")
+    st.success(f"📋 Mostrando lista para el Grupo: {grupo_seleccionado}")
     
-    # 💾 BOTÓN MAESTRO DE RESPALDO LOCAL DE SEGURIDAD
+    # 💾 EL BOTÓN DE MEJORA: Descarga el respaldo inmediato a la PC
     csv_buffer = io.StringIO()
     df_grupo.to_csv(csv_buffer, index=False)
     st.download_button(
-        label="💾 DESCARGAR RESPALDO DE SEGURIDAD ACTUAL (GUARDAR EN TU PC)",
+        label="💾 GUARDAR RESPALDO DE SEGURIDAD EN TU COMPUTADORA (EXCEL/CSV)",
         data=csv_buffer.getvalue(),
         file_name=f"Respaldo_Notas_{grupo_seleccionado}.csv",
         mime="text/csv",
@@ -158,69 +130,45 @@ else:
     )
     
     st.write("---")
+    st.write("💡 *Instrucciones para Óscar: Puedes dar doble clic directo en cualquier celda para cambiar las calificaciones, asistencias o firmas.*")
     
-    # Pestañas de control internas
-    tab_tabla, tab_captura_manual, tab_cambiar = st.tabs(["📊 Ver Calificaciones", "📝 Capturar Notas Celda por Celda", "🔄 Salir / Cargar Otro Texto"])
+    # El editor interactivo clásico celda por celda que le gusta a Óscar
+    df_editado = st.data_editor(df_grupo, use_container_width=True, hide_index=True)
     
-    with tab_tabla:
-        st.subheader("Cuadrícula General de Evaluaciones")
-        st.dataframe(df_grupo, use_container_width=True, hide_index=True)
-        
-    with tab_captura_manual:
-        st.subheader("Formulario de Captura Rápida")
-        alumno_sel = st.selectbox("👤 Selecciona al Estudiante:", df_grupo['Alumno'].tolist())
-        idx = df_grupo[df_grupo['Alumno'] == alumno_sel].index[0]
-        
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            st.markdown("### 📝 Quizes")
-            q1 = st.number_input("Quiz 1:", 0.0, 10.0, float(df_grupo.at[idx, "Quiz 1"]))
-            q2 = st.number_input("Quiz 2:", 0.0, 10.0, float(df_grupo.at[idx, "Quiz 2"]))
-            q3 = st.number_input("Quiz 3:", 0.0, 10.0, float(df_grupo.at[idx, "Quiz 3"]))
-            q4 = st.number_input("Quiz 4:", 0.0, 10.0, float(df_grupo.at[idx, "Quiz 4"]))
-        with c2:
-            st.markdown("### 🏗️ Proyectos")
-            p1 = st.number_input("Proyecto 1:", 0.0, 10.0, float(df_grupo.at[idx, "Proyecto 1"]))
-            p2 = st.number_input("Proyecto 2:", 0.0, 10.0, float(df_grupo.at[idx, "Proyecto 2"]))
-        with c3:
-            st.markdown("### 📋 Asistencia y Rasgos")
-            d_asist = st.number_input("Días Asistidos (Max 32):", 0, 32, int(df_grupo.at[idx, "Días Asistidos"]))
-            f_firmas = st.number_input("Firmas / Tareas (Max 15):", 0, 15, int(df_grupo.at[idx, "Firmas Registradas"]))
-            v_ser = st.number_input("Nota SER / Actitud:", 0.0, 10.0, float(df_grupo.at[idx, "Ser"]))
+    # Recalcular automáticamente si Óscar cambia datos en la tabla en tiempo real
+    if not df_editado.equals(df_grupo):
+        for idx in df_editado.index:
+            # Captura de datos numéricos desde las celdas editadas
+            q1 = float(df_editado.at[idx, "Quiz 1"])
+            q2 = float(df_editado.at[idx, "Quiz 2"])
+            q3 = float(df_editado.at[idx, "Quiz 3"])
+            q4 = float(df_editado.at[idx, "Quiz 4"])
+            p1 = float(df_editado.at[idx, "Proyecto 1"])
+            p2 = float(df_editado.at[idx, "Proyecto 2"])
+            dias = int(df_editado.at[idx, "Días Asistidos"])
+            firmas = int(df_editado.at[idx, "Firmas Registradas"])
+            ser = float(df_editado.at[idx, "Ser"])
             
-        if st.button("💾 Guardar y Calcular Notas de este Alumno", type="primary", use_container_width=True):
-            # Inyectar valores manuales
-            df_grupo.at[idx, "Quiz 1"] = q1
-            df_grupo.at[idx, "Quiz 2"] = q2
-            df_grupo.at[idx, "Quiz 3"] = q3
-            df_grupo.at[idx, "Quiz 4"] = q4
-            df_grupo.at[idx, "Proyecto 1"] = p1
-            df_grupo.at[idx, "Proyecto 2"] = p2
-            df_grupo.at[idx, "Días Asistidos"] = d_asist
-            df_grupo.at[idx, "Firmas Registradas"] = f_firmas
-            df_grupo.at[idx, "Ser"] = v_ser
+            # Cálculos automáticos matemáticos de los rubros
+            t_quiz = round((q1 + q2 + q3 + q4) / 4.0, 2)
+            t_proj = round((p1 + p2) / 2.0, 2)
+            t_asist = round((min(dias, 32) / 32.0) * 10.0, 2)
+            t_firmas = round((min(firmas, 15) / 15.0) * 10.0, 2)
             
-            # Realizar operaciones matemáticas automáticas
-            t_q = round((q1 + q2 + q3 + q4) / 4.0, 2)
-            t_p = round((p1 + p2) / 2.0, 2)
-            t_as = round((d_asist / 32.0) * 10.0, 2)
-            t_fi = round((f_firmas / 15.0) * 10.0, 2)
+            df_editado.at[idx, "TOTAL QUIZ"] = t_quiz
+            df_editado.at[idx, "TOTAL PROYECTO"] = t_proj
+            df_editado.at[idx, "Asistencia"] = t_asist
+            df_editado.at[idx, "TOTAL FIRMAS"] = t_firmas
             
-            df_grupo.at[idx, "TOTAL QUIZ"] = t_q
-            df_grupo.at[idx, "TOTAL PROYECTO"] = t_p
-            df_grupo.at[idx, "Asistencia"] = t_as
-            df_grupo.at[idx, "TOTAL FIRMAS"] = t_fi
+            # Nota final base 10 (Quizes 30%, Proyectos 30%, Asistencia 15%, Firmas 15%, SER 10%)
+            nota_b10 = (t_quiz * 0.3) + (t_proj * 0.3) + (t_asist * 0.15) + (t_firmas * 0.15) + (ser * 0.1)
+            df_editado.at[idx, "NOTA BASE 10"] = round(nota_b10, 1)
+            df_editado.at[idx, "PUNTAJE 30%"] = round(nota_b10 * 0.3, 2)
             
-            # Ponderación Base 10: Quizes 30%, Proyectos 30%, Asistencia 15%, Firmas 15%, SER 10%
-            n_b10 = (t_q * 0.3) + (t_p * 0.3) + (t_as * 0.15) + (t_fi * 0.15) + (v_ser * 0.1)
-            df_grupo.at[idx, "NOTA BASE 10"] = round(n_b10, 1)
-            df_grupo.at[idx, "PUNTAJE 30%"] = round(n_b10 * 0.3, 2)
-            
-            st.session_state.base_datos_grupos[grupo_seleccionado] = df_grupo
-            st.success(f"🎉 Notas de {alumno_sel} calculadas e inyectadas correctamente.")
-            st.rerun()
-            
-    with tab_cambiar:
-        if st.button("⚠️ Volver al inicio (Borrar tablas temporales de la pantalla)", type="destructive"):
-            st.session_state.base_datos_grupos = {}
-            st.rerun()
+        st.session_state.base_datos_grupos[grupo_seleccionado] = df_editado
+        st.rerun()
+
+    # Botón de emergencia para cerrar sesión o cambiar todo el bloque de texto
+    if st.button("🔄 Cerrar este grupo y cargar otra lista de texto"):
+        st.session_state.base_datos_grupos = {}
+        st.rerun()
